@@ -1,0 +1,296 @@
+#!/usr/bin/env node
+// The evolution loop. Run on a schedule (e.g. every 3 hours):
+//   node evolve/run.mjs [--config /etc/darwinian/config.json] [--species qr] [--dry-run]
+//
+// For each species: publish its config, advance the fitness stage, select (promote / retire),
+// then breed new mutants up to the traffic-adjusted population size.
+
+import fs from "node:fs";
+import path from "node:path";
+import { d1 } from "./lib/d1.mjs";
+import { decide, mutationSize, DEFAULTS } from "./lib/select.mjs";
+import { gate } from "./lib/gates.mjs";
+import { mutationPrompt, repairPrompt, auditPrompt, personaPrompt } from "./lib/prompts.mjs";
+import { run, must, expand, rid, log, lock, extractJson, readJson, stripHtml } from "./lib/util.mjs";
+
+const args = process.argv.slice(2);
+const argv = (k) => {
+  const i = args.indexOf(k);
+  return i >= 0 ? args[i + 1] : undefined;
+};
+const cfg = readJson(argv("--config") ?? process.env.DW_CONFIG ?? "/etc/darwinian/config.json", null);
+if (!cfg) {
+  console.error("Missing config. See evolve/config.example.json");
+  process.exit(1);
+}
+const DRY = args.includes("--dry-run") || cfg.dryRun;
+const db = d1(cfg, cfg.cloudflare.d1Engine);
+const cfEnv = { CLOUDFLARE_API_TOKEN: cfg.cloudflare.apiToken, CLOUDFLARE_ACCOUNT_ID: cfg.cloudflare.accountId };
+const now = () => Date.now();
+const journal = (species, kind, arm_id, detail) =>
+  db.run("INSERT INTO journal (ts, species, kind, arm_id, detail) VALUES (?,?,?,?,?)", [now(), species, kind, arm_id, String(detail).slice(0, 4000)]);
+
+class RateLimited extends Error {}
+
+async function claude(wt, promptText, model) {
+  fs.mkdirSync(path.join(wt, ".dw"), { recursive: true });
+  fs.writeFileSync(path.join(wt, ".dw/prompt.md"), promptText);
+  const cmd = expand(cfg.commands.claude, {
+    prompt: "Read the file .dw/prompt.md and carry out the instructions in it exactly. Work autonomously until done.",
+    model,
+  });
+  const r = await run(cmd[0], cmd.slice(1), { cwd: wt, timeoutMs: (cfg.timeouts?.mutateMin ?? 40) * 60_000 });
+  const text = r.out + r.err;
+  if (/rate.?limit|usage limit|limit reached|quota/i.test(text) && r.code !== 0) throw new RateLimited(text.slice(-500));
+  return r;
+}
+
+async function codex(promptText, tag) {
+  const out = path.join(cfg.workdir, ".tmp", `codex-${tag}-${rid(6)}.txt`);
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  const promptFile = out.replace(/\.txt$/, ".prompt.md");
+  fs.writeFileSync(promptFile, promptText);
+  const cmd = expand(cfg.commands.codex, { out, prompt: `Read ${promptFile} and answer exactly as it asks. Do not modify any files.` });
+  const r = await run(cmd[0], cmd.slice(1), { cwd: path.dirname(out), timeoutMs: 15 * 60_000 });
+  const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : r.out;
+  fs.rmSync(promptFile, { force: true });
+  fs.rmSync(out, { force: true });
+  return extractJson(text);
+}
+
+async function fetchText(origin, p) {
+  try {
+    const res = await fetch(origin + p, { headers: { "x-dw-key": cfg.routerKey, "x-dw-visitor": "evolve-screen" } });
+    return `--- ${p} (${res.status}) ---\n` + stripHtml(await res.text()).slice(0, 4000);
+  } catch (e) {
+    return `--- ${p} (fetch failed: ${e}) ---`;
+  }
+}
+
+async function deployArm(sp, wt, armId) {
+  const name = `sp-${sp.id}-${armId}`;
+  await must("npx", ["wrangler", "deploy", "--name", name, "--var", `ROUTER_KEY:${cfg.routerKey}`], { cwd: wt, env: cfEnv, timeoutMs: 5 * 60_000 });
+  return { name, origin: `https://${name}.${cfg.cloudflare.workersSubdomain}.workers.dev` };
+}
+
+async function deleteWorker(name) {
+  if (DRY) return;
+  await run("npx", ["wrangler", "delete", "--name", name, "--force"], { cwd: cfg.workdir, env: cfEnv, timeoutMs: 120_000 });
+}
+
+function lineageText(rows) {
+  return rows
+    .map((a) => `- [${a.status}] ${a.arm_id} (gen ${a.generation}, parent ${a.parent ?? "-"}): ${(a.hypothesis ?? "").replace(/\s+/g, " ").slice(0, 300)}${a.cause ? ` → ${a.cause}` : ""}`)
+    .join("\n");
+}
+
+async function insights(spId) {
+  const since = now() - 7 * 86400_000;
+  const [custom, pages, seg] = await Promise.all([
+    db.all("SELECT name, COUNT(*) n FROM events WHERE species=? AND ts>? AND name LIKE 'c:%' GROUP BY name ORDER BY n DESC LIMIT 12", [spId, since]),
+    db.all("SELECT path, COUNT(*) n FROM events WHERE species=? AND ts>? AND name='pageview' GROUP BY path ORDER BY n DESC LIMIT 12", [spId, since]),
+    db.all("SELECT segment, COUNT(DISTINCT visitor) n FROM events WHERE species=? AND ts>? AND name='js_seen' GROUP BY segment", [spId, since]),
+  ]);
+  return [
+    `Visitors last 7 days by device: ${seg.map((s) => `${s.segment} ${s.n}`).join(", ") || "none"}`,
+    `Top pages: ${pages.map((p) => `${p.path} (${p.n})`).join(", ") || "none"}`,
+    `Custom events: ${custom.map((c) => `${c.name.slice(2)} (${c.n})`).join(", ") || "none"}`,
+  ].join("\n");
+}
+
+async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
+  const armId = `g${st.generation + 1}-${rid()}`;
+  const ref = parent.git_ref || "main";
+  const wt = path.join(cfg.workdir, "wt", `${sp.id}-${armId}`);
+  const size = mutationSize();
+  log(`[${sp.id}] spawning ${armId} from ${parent.arm_id} (${size})`);
+  await must("git", ["worktree", "add", "-b", `arm/${armId}`, wt, ref], { cwd: repo });
+  const cleanup = async () => {
+    await run("git", ["worktree", "remove", "--force", wt], { cwd: repo });
+  };
+  try {
+    fs.symlinkSync(path.join(repo, "node_modules"), path.join(wt, "node_modules"));
+    fs.appendFileSync(path.join(repo, ".git", "info", "exclude"), "\n.dw/\nnode_modules\n");
+
+    const stage = species.stages[Math.min(st.stage, species.stages.length - 1)];
+    const lineage = await db.all(
+      "SELECT * FROM arms WHERE species=? AND status NOT IN ('control') ORDER BY created_at DESC LIMIT 25",
+      [sp.id],
+    );
+    const prompt = mutationPrompt({
+      species,
+      brief,
+      stage: stage.name,
+      stageEvent: stage.describe ?? `trigger "${stage.event}"`,
+      size,
+      lineage: lineageText(lineage),
+      siblings: siblings.map((s) => `- ${s.arm_id}: ${(s.hypothesis ?? "").slice(0, 200)}`).join("\n"),
+      insights: await insights(sp.id),
+      protectedFiles: species.protected ?? [],
+    });
+    const first = await claude(wt, prompt, cfg.models.mutate);
+    if (first.code !== 0) log(`[${sp.id}] claude exited ${first.code}: ${(first.err || first.out).slice(-300)}`);
+
+    const pkgChanged = (await run("git", ["diff", "--quiet", ref, "--", "package.json"], { cwd: wt })).code !== 0;
+    if (pkgChanged) {
+      fs.rmSync(path.join(wt, "node_modules"), { force: true });
+      await must("npm", ["install", "--no-audit", "--no-fund"], { cwd: wt, timeoutMs: 10 * 60_000 });
+    }
+
+    let g = await gate(wt, ref, species);
+    if (!g.ok && g.changes.length > 0) {
+      log(`[${sp.id}] ${armId} failed gates, attempting one repair`);
+      await claude(wt, repairPrompt(g.failure), cfg.models.repair);
+      g = await gate(wt, ref, species);
+    }
+    if (!g.ok) {
+      await journal(sp.id, "reject", armId, `failed gates: ${g.failure.slice(0, 1500)}`);
+      return null;
+    }
+
+    const mutation = fs.readFileSync(path.join(wt, "MUTATION.md"), "utf8");
+    const diff = (await run("git", ["diff", "--cached", ref], { cwd: wt })).out;
+    const audit = await codex(auditPrompt({ charter: fs.readFileSync(path.join(wt, "CHARTER.md"), "utf8"), diff, mutation }), "audit");
+    if (!audit || audit.verdict !== "pass") {
+      await journal(sp.id, "reject", armId, `audit ${audit ? "failed" : "unavailable"}: ${JSON.stringify(audit?.violations ?? []).slice(0, 1500)}`);
+      return null;
+    }
+
+    await must("git", ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local", "commit", "-q", "-m", `${armId}: ${mutation.split("\n")[0].replace(/^#\s*/, "")}\n\n${mutation}`], { cwd: wt });
+    const tag = `fossil/${sp.id}/${armId}`;
+    await must("git", ["tag", tag], { cwd: wt });
+    if (DRY) {
+      log(`[${sp.id}] dry-run: ${armId} passed gates + audit; not deploying`);
+      return null;
+    }
+
+    const newMigrations = g.changes.some((c) => c.status === "A" && c.path.startsWith("migrations/"));
+    if (newMigrations) {
+      await must("npx", ["wrangler", "d1", "migrations", "apply", `sp-${sp.id}`, "--remote"], { cwd: wt, env: cfEnv, timeoutMs: 5 * 60_000 });
+    }
+    const { name, origin } = await deployArm(sp, wt, armId);
+
+    // Persona screen: compare the child's key pages against its parent's.
+    const pages = sp.screenPages ?? ["/", "/pricing"];
+    const parentText = (await Promise.all(pages.map((p) => fetchText(parent.origin, p)))).join("\n");
+    const childText = (await Promise.all(pages.map((p) => fetchText(origin, p)))).join("\n");
+    const personas = await codex(personaPrompt({ brand: species.brand, parentText, childText, mutation }), "persona");
+    const votes = personas?.votes ?? [];
+    const strongNo = votes.filter((v) => v.prefers === "A" && v.strength >= 4).length;
+    if (personas?.broken || (votes.length >= 3 && strongNo === votes.length)) {
+      await journal(sp.id, "reject", armId, `persona screen: ${personas?.broken ? "broken: " + personas.broken_reason : "all personas strongly preferred the parent"}`);
+      await deleteWorker(name);
+      return null;
+    }
+
+    await must("git", ["push", "-q", "origin", `arm/${armId}`, tag], { cwd: wt });
+    const hypothesis = mutation.replace(/\r/g, "").split("\n").filter(Boolean).slice(0, 3).join(" ").slice(0, 600);
+    await db.run(
+      "INSERT INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+      [sp.id, armId, origin, "live", st.generation + 1, parent.arm_id, tag, hypothesis, now()],
+    );
+    await journal(sp.id, "spawn", armId, `${size} mutation of ${parent.arm_id}: ${audit.summary ?? ""} | personas: ${votes.map((v) => `${v.prefers}${v.strength}`).join(" ")}`);
+    log(`[${sp.id}] ${armId} is alive at ${origin}`);
+    return armId;
+  } finally {
+    await cleanup();
+  }
+}
+
+async function cycle(sp) {
+  const repo = path.join(cfg.workdir, sp.repo);
+  await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
+  await must("git", ["checkout", "-q", "main"], { cwd: repo });
+  await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
+  await must("npm", ["install", "--no-audit", "--no-fund"], { cwd: repo, timeoutMs: 10 * 60_000 });
+
+  const species = JSON.parse(fs.readFileSync(path.join(repo, "species.json"), "utf8"));
+  const brief = fs.existsSync(path.join(repo, "BRIEF.md")) ? fs.readFileSync(path.join(repo, "BRIEF.md"), "utf8") : species.brand.tagline;
+  await db.run("INSERT INTO species_config (species, json, updated_at) VALUES (?,?,?) ON CONFLICT(species) DO UPDATE SET json=excluded.json, updated_at=excluded.updated_at", [sp.id, JSON.stringify(species), now()]);
+  let st = await db.first("SELECT * FROM species_state WHERE species=?", [sp.id]);
+  if (!st) {
+    await db.run("INSERT INTO species_state (species, stage, generation, updated_at) VALUES (?,?,?,?)", [sp.id, 0, 0, now()]);
+    st = { stage: 0, generation: 0 };
+  }
+
+  // Stage advancement: once the current stage is routinely achieved, select on something deeper.
+  const stage = species.stages[st.stage];
+  if (stage?.advanceAt && st.stage < species.stages.length - 1) {
+    const r = await db.first("SELECT COUNT(DISTINCT visitor) n FROM events WHERE species=? AND name=? AND ts>?", [sp.id, stage.event, now() - 7 * 86400_000]);
+    if ((r?.n ?? 0) >= stage.advanceAt) {
+      st.stage += 1;
+      await db.run("UPDATE species_state SET stage=?, updated_at=? WHERE species=?", [st.stage, now(), sp.id]);
+      await journal(sp.id, "stage", null, `advanced to stage ${st.stage} (${species.stages[st.stage].name}): ${r.n} visitors hit ${stage.event} last week`);
+    }
+  }
+
+  const arms = await db.all("SELECT * FROM arms WHERE species=? AND status IN ('live','champion')", [sp.id]);
+  const statRows = await db.all("SELECT arm_id, trials, successes FROM arm_stats WHERE species=? AND segment='all'", [sp.id]);
+  const stats = Object.fromEntries(statRows.map((r) => [r.arm_id, r]));
+  const weekly = (await db.first("SELECT COUNT(DISTINCT visitor) n FROM events WHERE species=? AND name='js_seen' AND ts>?", [sp.id, now() - 7 * 86400_000]))?.n ?? 0;
+  const dec = decide(arms, stats, weekly, now(), { ...DEFAULTS, ...cfg.selection, population: species.population ?? 3 });
+  log(`[${sp.id}] stage ${st.stage}, gen ${st.generation}, ${arms.length} evolving arms, ${weekly} visitors/wk → population ${dec.population}, promote ${dec.promote ?? "-"}, retire ${dec.retire.length}, spawn ${dec.spawn}`);
+
+  for (const r of dec.retire) {
+    const s = stats[r.arm_id];
+    const cause = `${r.cause}${s ? ` [${s.successes}/${s.trials}]` : ""}`;
+    if (!DRY) await db.run("UPDATE arms SET status='retired', retired_at=?, cause=? WHERE species=? AND arm_id=?", [now(), cause, sp.id, r.arm_id]);
+    await journal(sp.id, "retire", r.arm_id, cause);
+    await deleteWorker(`sp-${sp.id}-${r.arm_id}`);
+  }
+  if (dec.promote && !DRY) {
+    const winner = arms.find((a) => a.arm_id === dec.promote);
+    await db.run("UPDATE arms SET status='champion' WHERE species=? AND arm_id=?", [sp.id, dec.promote]);
+    st.generation += 1;
+    await db.run("UPDATE species_state SET generation=?, updated_at=? WHERE species=?", [st.generation, now(), sp.id]);
+    // The champion's code becomes main; every ancestor stays reachable through its fossil/ tag.
+    await must("git", ["reset", "-q", "--hard", winner.git_ref], { cwd: repo });
+    await must("git", ["push", "-q", "--force-with-lease", "origin", "main"], { cwd: repo });
+    await journal(sp.id, "promote", dec.promote, `new champion (P(best)=${dec.pb[dec.promote].toFixed(3)}); generation ${st.generation}`);
+  }
+
+  const alive = await db.all("SELECT * FROM arms WHERE species=? AND status IN ('live','champion')", [sp.id]);
+  const champion = alive.find((a) => a.status === "champion") ?? alive[0];
+  if (!champion) {
+    await journal(sp.id, "note", null, "no evolving arm alive; re-run bootstrap");
+    return;
+  }
+  const toSpawn = Math.min(dec.spawn, cfg.maxSpawnPerRun ?? 2);
+  for (let i = 0; i < toSpawn; i++) {
+    // Mostly breed from the champion; sometimes from a promising challenger, for diversity.
+    const challengers = alive.filter((a) => a.status === "live" && (dec.pb[a.arm_id] ?? 0) > 0.25);
+    const parent = challengers.length && Math.random() < 0.25 ? challengers[Math.floor(Math.random() * challengers.length)] : champion;
+    try {
+      const id = await spawnOne(sp, repo, species, brief, st, parent, alive.filter((a) => a.status === "live"));
+      if (id) alive.push({ arm_id: id, status: "live", hypothesis: "(new)" });
+    } catch (e) {
+      if (e instanceof RateLimited) {
+        log(`[${sp.id}] subscription limit reached; stopping spawns this run`);
+        await journal(sp.id, "note", null, "mutation paused: model usage limit reached");
+        throw e;
+      }
+      log(`[${sp.id}] spawn failed: ${e.message}`);
+      await journal(sp.id, "reject", null, `spawn crashed: ${e.message.slice(0, 1000)}`);
+    }
+  }
+}
+
+const release = lock(path.join(cfg.workdir, ".tmp", "evolve.lock"));
+if (!release) {
+  log("another evolve run is in progress; exiting");
+  process.exit(0);
+}
+try {
+  const only = argv("--species");
+  for (const sp of cfg.species.filter((s) => !only || s.id === only)) {
+    try {
+      await cycle(sp);
+    } catch (e) {
+      if (e instanceof RateLimited) break;
+      log(`[${sp.id}] cycle failed: ${e.stack ?? e}`);
+      await journal(sp.id, "note", null, `cycle failed: ${String(e.message).slice(0, 1000)}`).catch(() => {});
+    }
+  }
+} finally {
+  release();
+}

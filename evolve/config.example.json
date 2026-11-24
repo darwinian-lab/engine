@@ -1,0 +1,29 @@
+{
+  "workdir": "/opt/darwinian",
+  "cloudflare": {
+    "accountId": "FILL_ME",
+    "apiToken": "FILL_ME",
+    "workersSubdomain": "",
+    "d1Engine": "",
+    "apiBase": "https://api.cloudflare.com/client/v4"
+  },
+  "routerKey": "",
+  "labKey": "",
+  "github": { "org": "darwinian-lab" },
+  "species": [
+    { "id": "qr", "repo": "species-qr", "domain": "FILL_ME.com", "screenPages": ["/", "/pricing", "/wifi-qr-code-generator"] },
+    { "id": "resume", "repo": "species-resume", "domain": "FILL_ME.com", "screenPages": ["/", "/pricing", "/resume-examples"] },
+    { "id": "wall", "repo": "species-wall", "domain": "FILL_ME.com", "screenPages": ["/", "/pricing", "/testimonial-widget"] }
+  ],
+  "commands": {
+    "claude": ["claude", "-p", "{prompt}", "--model", "{model}", "--permission-mode", "acceptEdits",
+      "--allowedTools", "Read,Edit,Write,Glob,Grep,Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git checkout:*),Bash(ls:*),Bash(cat:*)",
+      "--output-format", "json"],
+    "codex": ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only", "--output-last-message", "{out}", "{prompt}"]
+  },
+  "models": { "mutate": "opus", "repair": "sonnet" },
+  "selection": { "minTrials": 100, "promoteAt": 0.95, "killAt": 0.05, "maxAgeDays": 21 },
+  "maxSpawnPerRun": 2,
+  "timeouts": { "mutateMin": 40 },
+  "dryRun": false
+}

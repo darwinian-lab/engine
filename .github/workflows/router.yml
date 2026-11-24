@@ -1,0 +1,24 @@
+name: router
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx tsc -p .
+      - run: npx vitest run
+      - name: Deploy routers (only after bootstrap has filled in the config)
+        if: github.event_name == 'push'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        working-directory: router
+        run: |
+          if grep -q "__D1_ID__" wrangler.toml || [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "not bootstrapped yet, skipping deploy"; exit 0; fi
+          for env in qr resume wall; do npx wrangler deploy --env $env; done

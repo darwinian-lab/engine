@@ -1,0 +1,27 @@
+# One router per species, all built from the same code.
+# DB id and domains are filled in by scripts/bootstrap.mjs (it rewrites the __PLACEHOLDERS__).
+name = "dw-router"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = false
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[env.qr]
+name = "dw-router-qr"
+vars = { SPECIES = "qr" }
+routes = [{ pattern = "__DOMAIN_QR__", custom_domain = true }]
+d1_databases = [{ binding = "DB", database_name = "darwinian", database_id = "__D1_ID__" }]
+
+[env.resume]
+name = "dw-router-resume"
+vars = { SPECIES = "resume" }
+routes = [{ pattern = "__DOMAIN_RESUME__", custom_domain = true }]
+d1_databases = [{ binding = "DB", database_name = "darwinian", database_id = "__D1_ID__" }]
+
+[env.wall]
+name = "dw-router-wall"
+vars = { SPECIES = "wall" }
+routes = [{ pattern = "__DOMAIN_WALL__", custom_domain = true }]
+d1_databases = [{ binding = "DB", database_name = "darwinian", database_id = "__D1_ID__" }]
