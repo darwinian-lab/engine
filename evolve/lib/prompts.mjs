@@ -65,6 +65,16 @@ ${failure.slice(-6000)}
 \`\`\``;
 }
 
+export function auditFixPrompt(violations) {
+  return `An independent auditor reviewed your mutation in this repository and found these BLOCKING problems:
+
+${violations.map((v, i) => `${i + 1}. ${v}`).join("\n")}
+
+Fix every one of them, keeping the intent of your mutation (or remove the part that causes a problem if it can't be
+fixed cleanly). Do not touch protected files. Then run \`npm test\` and \`npm run typecheck\` until they pass, and update
+MUTATION.md if the change is now different.`;
+}
+
 export function auditPrompt({ charter, diff, mutation }) {
   return `You are the independent auditor of a self-evolving website. A mutation (code change) was proposed by
 another AI. Judge it ONLY against the charter below. You are not judging whether it is a good idea, only
@@ -84,8 +94,12 @@ code that triggers fitness/tracking endpoints automatically or without a genuine
 files; destructive migrations; new third-party trackers or external services; privacy violations; deceptive claims;
 anything unsafe or unlawful.
 
+Separate BLOCKING problems (any charter violation above, or a bug that loses or corrupts a user's data, breaks the
+core task of the product, or misleads the user) from minor notes (polish, edge cases, style). Only blocking problems
+fail the audit.
+
 Answer with ONLY a JSON object:
-{"verdict":"pass"|"fail","violations":["..."],"summary":"one sentence describing the change"}`;
+{"verdict":"pass"|"fail","violations":["blocking problem, specific and actionable", ...],"notes":["minor note", ...],"summary":"one sentence describing the change"}`;
 }
 
 export function personaPrompt({ brand, parentText, childText, mutation }) {

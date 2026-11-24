@@ -11,7 +11,7 @@ import { d1 } from "./lib/d1.mjs";
 import { loadConfig } from "./lib/config.mjs";
 import { decide, mutationSize, DEFAULTS } from "./lib/select.mjs";
 import { gate } from "./lib/gates.mjs";
-import { mutationPrompt, repairPrompt, auditPrompt, personaPrompt } from "./lib/prompts.mjs";
+import { mutationPrompt, repairPrompt, auditPrompt, auditFixPrompt, personaPrompt } from "./lib/prompts.mjs";
 import { run, must, expand, rid, log, lock, extractJson, readJson, stripHtml } from "./lib/util.mjs";
 
 // In GitHub Actions, surface fatal errors as annotations (readable without opening the log).
@@ -150,7 +150,7 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
 
     const pkgChanged = (await run("git", ["diff", "--quiet", ref, "--", "package.json"], { cwd: wt })).code !== 0;
     if (pkgChanged) {
-      fs.rmSync(path.join(wt, "node_modules"), { force: true });
+      fs.rmSync(path.join(wt, "node_modules"), { force: true, recursive: true });
       await must("npm", ["install", "--no-audit", "--no-fund"], { cwd: wt, timeoutMs: 10 * 60_000 });
     }
 
@@ -165,13 +165,24 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
       return null;
     }
 
-    const mutation = fs.readFileSync(path.join(wt, "MUTATION.md"), "utf8");
-    const diff = (await run("git", ["diff", "--cached", ref], { cwd: wt })).out;
-    const audit = await codex(auditPrompt({ charter: fs.readFileSync(path.join(wt, "CHARTER.md"), "utf8"), diff, mutation }), "audit");
+    // Independent audit (Codex). One chance to fix blocking findings, then a second audit.
+    const runAudit = async () => {
+      const diff = (await run("git", ["diff", "--cached", ref], { cwd: wt })).out;
+      const mutationText = fs.readFileSync(path.join(wt, "MUTATION.md"), "utf8");
+      return codex(auditPrompt({ charter: fs.readFileSync(path.join(wt, "CHARTER.md"), "utf8"), diff, mutation: mutationText }), "audit");
+    };
+    let audit = await runAudit();
+    if (audit && audit.verdict !== "pass" && (audit.violations ?? []).length) {
+      ghNotice(`${sp.id} ${armId} audit round 1`, JSON.stringify(audit.violations));
+      await claude(wt, auditFixPrompt(audit.violations), cfg.models.repair);
+      g = await gate(wt, ref, species);
+      audit = g.ok ? await runAudit() : { verdict: "fail", violations: ["gates failed after fixing audit findings: " + g.failure.slice(0, 500)] };
+    }
     if (!audit || audit.verdict !== "pass") {
       await journal(sp.id, "reject", armId, `audit ${audit ? "failed" : "unavailable"}: ${JSON.stringify(audit?.violations ?? []).slice(0, 1500)}`);
       return null;
     }
+    const mutation = fs.readFileSync(path.join(wt, "MUTATION.md"), "utf8");
 
     await must("git", ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local", "commit", "-q", "-m", `${armId}: ${mutation.split("\n")[0].replace(/^#\s*/, "")}\n\n${mutation}`], { cwd: wt });
     const tag = `fossil/${sp.id}/${armId}`;
