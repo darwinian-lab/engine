@@ -6,7 +6,7 @@
     {
       "id": "qr",
       "repo": "species-qr",
-      "domain": "FILL_ME.com",
+      "domain": "qrsthatlast.com",
       "screenPages": [
         "/",
         "/pricing",
@@ -16,7 +16,7 @@
     {
       "id": "resume",
       "repo": "species-resume",
-      "domain": "FILL_ME.com",
+      "domain": "calmcv.com",
       "screenPages": [
         "/",
         "/pricing",
@@ -26,7 +26,7 @@
     {
       "id": "wall",
       "repo": "species-wall",
-      "domain": "FILL_ME.com",
+      "domain": "kudospage.com",
       "screenPages": [
         "/",
         "/pricing",
