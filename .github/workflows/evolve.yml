@@ -1,0 +1,36 @@
+name: evolve
+on:
+  schedule:
+    - cron: "17 */3 * * *" # every 3 hours
+  workflow_dispatch:
+    inputs:
+      species: { description: "Only this species (qr, resume, wall)", required: false }
+      dry_run: { description: "Dry run (no deploys)", type: boolean, default: false }
+concurrency: { group: evolve, cancel-in-progress: false }
+permissions: { contents: write }
+jobs:
+  evolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      DW_GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+      DW_ROUTER_KEY: ${{ secrets.DW_ROUTER_KEY }}
+      DW_LAB_KEY: ${{ secrets.DW_LAB_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: scripts/ci-setup.sh
+      - name: Evolve
+        run: |
+          ARGS=""
+          [ -n "${{ inputs.species }}" ] && ARGS="$ARGS --species ${{ inputs.species }}"
+          [ "${{ inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
+          node evolve/run.mjs $ARGS
+      - if: always()
+        run: scripts/ci-finish.sh

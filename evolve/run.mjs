@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { d1 } from "./lib/d1.mjs";
+import { loadConfig } from "./lib/config.mjs";
 import { decide, mutationSize, DEFAULTS } from "./lib/select.mjs";
 import { gate } from "./lib/gates.mjs";
 import { mutationPrompt, repairPrompt, auditPrompt, personaPrompt } from "./lib/prompts.mjs";
@@ -18,9 +19,9 @@ const argv = (k) => {
   const i = args.indexOf(k);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const cfg = readJson(argv("--config") ?? process.env.DW_CONFIG ?? "/etc/darwinian/config.json", null);
-if (!cfg) {
-  console.error("Missing config. See evolve/config.example.json");
+const cfg = loadConfig(args);
+if (!cfg.cloudflare.apiToken || !cfg.cloudflare.d1Engine || !cfg.routerKey) {
+  console.error("Not configured yet: run bootstrap first (and set the CLOUDFLARE_* / DW_* secrets).");
   process.exit(1);
 }
 const DRY = args.includes("--dry-run") || cfg.dryRun;

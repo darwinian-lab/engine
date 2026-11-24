@@ -33,7 +33,13 @@ A visitor is a trial once their browser runs JS (bots excluded); a success once 
 - Population size adapts to traffic so every arm can actually be judged.
 - The frozen control arm (generation 0) answers the real question: does evolution beat standing still?
 
-## Operating
-- Owner dashboard: `https://<domain>/_dw/lab?key=<labKey>` (per species, read-only).
-- Setup: `scripts/setup-server.sh` (once, as root), then `scripts/bootstrap.mjs`, then enable the timer.
-- Manual run: `node evolve/run.mjs --config /etc/darwinian/config.json [--species qr] [--dry-run]`.
+## Operating (GitHub Actions, no server)
+- `evolve` workflow runs every 3 hours (and on demand from the Actions tab, optionally `--species` / dry run).
+- `bootstrap` workflow: run once after the secrets are set; brings generation 0 to life.
+- Secrets on this repo: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`),
+  `CODEX_AUTH_JSON` (contents of `~/.codex/auth.json`; refreshed automatically after each run), `DW_GH_TOKEN`
+  (fine-grained token: contents + secrets read/write on the org's repos), `DW_LAB_KEY` (a passphrase you choose).
+  `DW_ROUTER_KEY` is created by the bootstrap workflow.
+- Owner dashboard: `https://<domain>/_dw/lab?key=<DW_LAB_KEY>` (per species, read-only).
+- `log/` gets one line per day: a public, human-readable record of the evolution.
+- Alternative: `scripts/setup-server.sh` runs the same loop on any Ubuntu server with `--config`.

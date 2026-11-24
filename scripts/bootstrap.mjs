@@ -5,18 +5,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
-import { fileURLToPath } from "node:url";
 import { d1 } from "../evolve/lib/d1.mjs";
-import { must, run, log, readJson } from "../evolve/lib/util.mjs";
+import { loadConfig, ENGINE_DIR } from "../evolve/lib/config.mjs";
+import { must, run, log } from "../evolve/lib/util.mjs";
 
-const cfgPath = process.argv[process.argv.indexOf("--config") + 1] || "/etc/darwinian/config.json";
-const cfg = readJson(cfgPath, null);
-if (!cfg) throw new Error(`cannot read ${cfgPath}`);
-const engine = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const cfg = loadConfig();
+const engine = ENGINE_DIR;
 const env = { CLOUDFLARE_API_TOKEN: cfg.cloudflare.apiToken, CLOUDFLARE_ACCOUNT_ID: cfg.cloudflare.accountId };
 const api = cfg.cloudflare.apiBase ?? "https://api.cloudflare.com/client/v4";
-const save = () => fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+const save = () => cfg.save();
 const git = (cwd, ...a) => must("git", ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local", ...a], { cwd });
 
 async function cf(p, init = {}) {
@@ -43,8 +40,7 @@ function fill(file, map) {
 }
 
 // 0. keys + workers.dev subdomain
-cfg.routerKey ||= crypto.randomBytes(24).toString("hex");
-cfg.labKey ||= crypto.randomBytes(12).toString("hex");
+if (!cfg.routerKey || !cfg.labKey) throw new Error("DW_ROUTER_KEY and DW_LAB_KEY must be set (the bootstrap workflow creates them).");
 if (!cfg.cloudflare.workersSubdomain) {
   const sub = await cf(`/accounts/${cfg.cloudflare.accountId}/workers/subdomain`).catch(() => null);
   if (!sub?.subdomain) throw new Error("No workers.dev subdomain yet: open Workers & Pages in the Cloudflare dashboard once to claim one, then re-run.");
@@ -58,6 +54,13 @@ save();
 const db = d1(cfg, cfg.cloudflare.d1Engine);
 for (const f of fs.readdirSync(path.join(engine, "migrations")).sort()) {
   await db.run(fs.readFileSync(path.join(engine, "migrations", f), "utf8")); // all statements are idempotent
+}
+
+// commit discovered state (d1 id, workers subdomain) so scheduled runs can use it
+if ((await run("git", ["status", "--porcelain", "evolve/state.json"], { cwd: engine })).out.trim()) {
+  await git(engine, "add", "evolve/state.json");
+  await git(engine, "commit", "-q", "-m", "bootstrap: record database and workers subdomain");
+  await git(engine, "push", "-q", "origin", "HEAD:main");
 }
 
 // 2. routers
@@ -109,5 +112,5 @@ for (const sp of cfg.species) {
   await db.run("INSERT INTO journal (ts, species, kind, arm_id, detail) VALUES (?,?,?,?,?)", [Date.now(), sp.id, "note", null, "bootstrap complete: generation 0 is alive"]);
 }
 
-console.log("\nDone. Lab dashboards (bookmark these, they are private):");
-for (const sp of cfg.species) console.log(`  ${sp.id}: https://${sp.domain}/_dw/lab?key=${cfg.labKey}`);
+console.log("\nDone. Lab dashboards (add ?key=<your DW_LAB_KEY>):");
+for (const sp of cfg.species) console.log(`  ${sp.id}: https://${sp.domain}/_dw/lab`);
