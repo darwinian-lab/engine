@@ -282,6 +282,12 @@ if (!release) {
   process.exit(0);
 }
 try {
+  // Owner reminders (e.g. token renewal) surface in every lab dashboard's journal, once a day.
+  for (const r of cfg.reminders ?? []) {
+    if (Date.now() < Date.parse(r.from)) continue;
+    const seen = await db.first("SELECT id FROM journal WHERE kind='reminder' AND detail=? AND ts>?", [r.text, Date.now() - 86400_000]);
+    if (!seen) await journal(null, "reminder", null, r.text);
+  }
   const only = argv("--species");
   for (const sp of cfg.species.filter((s) => !only || s.id === only)) {
     try {

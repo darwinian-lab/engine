@@ -73,5 +73,11 @@
   "timeouts": {
     "mutateMin": 40
   },
-  "dryRun": false
+  "dryRun": false,
+  "reminders": [
+    {
+      "from": "2027-11-05",
+      "text": "The DW_GH_TOKEN GitHub token expires on 2027-11-26. Create a new fine-grained token (darwinian-lab, all repos, Contents/Secrets/Workflows/Actions read & write) and replace the secret on darwinian-lab/engine."
+    }
+  ]
 }
