@@ -1,6 +1,8 @@
 name: bootstrap
 # Run once (Actions → bootstrap → Run workflow) after the secrets are set and the domains are on Cloudflare.
-on: { workflow_dispatch: {} }
+on:
+  workflow_dispatch: {}
+  push: { branches: [main], paths: ["ops/bootstrap.txt"] } # commit to this file to trigger from a session
 permissions: { contents: write }
 jobs:
   bootstrap:

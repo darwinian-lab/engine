@@ -2,6 +2,7 @@ name: evolve
 on:
   schedule:
     - cron: "17 */3 * * *" # every 3 hours
+  push: { branches: [main], paths: ["ops/evolve.txt"] } # commit to this file to trigger from a session
   workflow_dispatch:
     inputs:
       species: { description: "Only this species (qr, resume, wall)", required: false }
