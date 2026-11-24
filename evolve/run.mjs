@@ -38,8 +38,11 @@ const DRY = args.includes("--dry-run") || cfg.dryRun;
 const db = d1(cfg, cfg.cloudflare.d1Engine);
 const cfEnv = { CLOUDFLARE_API_TOKEN: cfg.cloudflare.apiToken, CLOUDFLARE_ACCOUNT_ID: cfg.cloudflare.accountId };
 const now = () => Date.now();
-const journal = (species, kind, arm_id, detail) =>
-  db.run("INSERT INTO journal (ts, species, kind, arm_id, detail) VALUES (?,?,?,?,?)", [now(), species, kind, arm_id, String(detail).slice(0, 4000)]);
+const ghNotice = (title, msg) => {
+  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=${title}::${String(msg).slice(0, 1800).replace(/%/g, "%25").replace(/\r/g, "").replace(/\n/g, "%0A")}`);
+};
+const journal = (species, kind, arm_id, detail) => (ghNotice(`${species ?? "engine"} ${kind} ${arm_id ?? ""}`, detail),
+  db.run("INSERT INTO journal (ts, species, kind, arm_id, detail) VALUES (?,?,?,?,?)", [now(), species, kind, arm_id, String(detail).slice(0, 4000)]));
 
 class RateLimited extends Error {}
 
@@ -140,7 +143,10 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
       protectedFiles: species.protected ?? [],
     });
     const first = await claude(wt, prompt, cfg.models.mutate);
-    if (first.code !== 0) log(`[${sp.id}] claude exited ${first.code}: ${(first.err || first.out).slice(-300)}`);
+    if (first.code !== 0) {
+      log(`[${sp.id}] claude exited ${first.code}: ${(first.err || first.out).slice(-300)}`);
+      ghNotice(`${sp.id} claude exit ${first.code}`, (first.err || first.out).slice(-1500));
+    }
 
     const pkgChanged = (await run("git", ["diff", "--quiet", ref, "--", "package.json"], { cwd: wt })).code !== 0;
     if (pkgChanged) {
@@ -240,6 +246,7 @@ async function cycle(sp) {
   const stats = Object.fromEntries(statRows.map((r) => [r.arm_id, r]));
   const weekly = (await db.first("SELECT COUNT(DISTINCT visitor) n FROM events WHERE species=? AND name='js_seen' AND ts>?", [sp.id, now() - 7 * 86400_000]))?.n ?? 0;
   const dec = decide(arms, stats, weekly, now(), { ...DEFAULTS, ...cfg.selection, population: species.population ?? 3 });
+  ghNotice(`${sp.id} cycle`, `stage ${st.stage}, gen ${st.generation}, ${arms.length} evolving, ${weekly} visitors/wk, spawn ${dec.spawn}`);
   log(`[${sp.id}] stage ${st.stage}, gen ${st.generation}, ${arms.length} evolving arms, ${weekly} visitors/wk → population ${dec.population}, promote ${dec.promote ?? "-"}, retire ${dec.retire.length}, spawn ${dec.spawn}`);
 
   for (const r of dec.retire) {
