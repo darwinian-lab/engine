@@ -14,6 +14,16 @@ import { gate } from "./lib/gates.mjs";
 import { mutationPrompt, repairPrompt, auditPrompt, personaPrompt } from "./lib/prompts.mjs";
 import { run, must, expand, rid, log, lock, extractJson, readJson, stripHtml } from "./lib/util.mjs";
 
+// In GitHub Actions, surface fatal errors as annotations (readable without opening the log).
+const annotate = (e) => {
+  if (process.env.GITHUB_ACTIONS) console.log(`::error::${String(e?.stack ?? e).slice(0, 1500).replace(/%/g, "%25").replace(/\r/g, "").replace(/\n/g, "%0A")}`);
+  console.error(e);
+  process.exit(1);
+};
+process.on("uncaughtException", annotate);
+process.on("unhandledRejection", annotate);
+
+
 const args = process.argv.slice(2);
 const argv = (k) => {
   const i = args.indexOf(k);

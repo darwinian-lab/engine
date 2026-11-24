@@ -9,6 +9,16 @@ import { d1 } from "../evolve/lib/d1.mjs";
 import { loadConfig, ENGINE_DIR } from "../evolve/lib/config.mjs";
 import { must, run, log } from "../evolve/lib/util.mjs";
 
+// In GitHub Actions, surface fatal errors as annotations (readable without opening the log).
+const annotate = (e) => {
+  if (process.env.GITHUB_ACTIONS) console.log(`::error::${String(e?.stack ?? e).slice(0, 1500).replace(/%/g, "%25").replace(/\r/g, "").replace(/\n/g, "%0A")}`);
+  console.error(e);
+  process.exit(1);
+};
+process.on("uncaughtException", annotate);
+process.on("unhandledRejection", annotate);
+
+
 const cfg = loadConfig();
 const engine = ENGINE_DIR;
 const env = { CLOUDFLARE_API_TOKEN: cfg.cloudflare.apiToken, CLOUDFLARE_ACCOUNT_ID: cfg.cloudflare.accountId };

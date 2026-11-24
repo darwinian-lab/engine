@@ -16,16 +16,10 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: scripts/ci-setup.sh
-      - name: Create the router key (first run only)
-        env: { GH_TOKEN: "${{ secrets.DW_GH_TOKEN }}" }
+      - name: Check the lab passphrase
         run: |
-          if [ -z "${{ secrets.DW_LAB_KEY }}" ]; then echo "Set the DW_LAB_KEY secret (any long passphrase you choose) first." && exit 1; fi
-          if [ -z "${{ secrets.DW_ROUTER_KEY }}" ]; then
-            gh secret set DW_ROUTER_KEY --repo "$GITHUB_REPOSITORY" --body "$(openssl rand -hex 24)"
-            echo "Router key created. Re-run this workflow once more to finish." && exit 1
-          fi
+          if [ -z "${{ secrets.DW_LAB_KEY }}" ]; then echo "::error::Set the DW_LAB_KEY secret (any long passphrase you choose) first."; exit 1; fi
       - name: Bootstrap generation 0
         env:
-          DW_ROUTER_KEY: ${{ secrets.DW_ROUTER_KEY }}
           DW_LAB_KEY: ${{ secrets.DW_LAB_KEY }}
         run: node scripts/bootstrap.mjs

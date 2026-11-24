@@ -1,6 +1,7 @@
 // Config = settings.json (committed, non-secret) + state.json (written by bootstrap, committed)
 // + secrets from the environment. `--config file.json` still works for running on a server.
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readJson } from "./util.mjs";
@@ -31,7 +32,8 @@ export function loadConfig(argv = process.argv.slice(2)) {
       d1Engine: state.d1Engine ?? "",
       apiBase: settings.cloudflareApiBase,
     },
-    routerKey: env.DW_ROUTER_KEY ?? "",
+    // The router key is derived from the owner's lab passphrase, so there is one secret fewer to manage.
+    routerKey: env.DW_ROUTER_KEY || (env.DW_LAB_KEY ? crypto.createHmac("sha256", env.DW_LAB_KEY).update("darwinian-router").digest("hex") : ""),
     labKey: env.DW_LAB_KEY ?? "",
   };
   // Persist only the non-secret, bootstrap-discovered values.
