@@ -35,9 +35,27 @@ async function pool(items, n, fn) {
   if (stop) throw stop;
 }
 
-function mcpArgs(s, profileDir, device) {
+// A headless browser has no print window, so window.print() would silently do nothing. Real browsers show one,
+// so the simulated browser shows an equivalent: a print sheet whose "Save as PDF" saves the page.
+const BROWSER_SHIMS = `(() => {
+  const show = () => {
+    if (document.getElementById("__dw_print")) return;
+    const d = document.createElement("div");
+    d.id = "__dw_print";
+    d.setAttribute("role", "dialog");
+    d.setAttribute("aria-label", "Print");
+    d.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font:16px system-ui";
+    d.innerHTML = '<div style="background:#fff;color:#111;border-radius:12px;padding:20px;max-width:340px;width:90%"><h2 style="margin:0 0 6px;font-size:18px">Print</h2><p style="margin:0 0 14px">Destination: Save as PDF</p><button id="__dw_save" style="font:inherit;padding:8px 14px">Save as PDF</button> <button id="__dw_cancel" style="font:inherit;padding:8px 14px">Cancel</button></div>';
+    document.body.appendChild(d);
+    d.querySelector("#__dw_save").onclick = () => { d.innerHTML = '<div style="background:#fff;color:#111;border-radius:12px;padding:20px">Saved as PDF: ' + (document.title || "document").replace(/[<>]/g, "") + '.pdf <button id="__dw_ok" style="font:inherit;margin-left:8px">OK</button></div>'; d.querySelector("#__dw_ok").onclick = () => d.remove(); };
+    d.querySelector("#__dw_cancel").onclick = () => d.remove();
+  };
+  window.print = () => { if (document.body) show(); else addEventListener("DOMContentLoaded", show); };
+})();`;
+
+function mcpArgs(s, profileDir, device, shimFile) {
   return [
-    "--headless", "--browser", s.browser ?? "chrome", "--user-data-dir", profileDir,
+    "--headless", "--init-script", shimFile, "--browser", s.browser ?? "chrome", "--user-data-dir", profileDir,
     ...(device === "mobile" ? ["--device", s.mobileDevice ?? "iPhone 15"] : ["--viewport-size", "1366,860"]),
     "--timeout-navigation", "30000", "--output-dir", path.join(profileDir, "..", "out"),
   ];
@@ -45,7 +63,9 @@ function mcpArgs(s, profileDir, device) {
 
 async function agent(cfg, prompt, profileDir, device, workDir) {
   const s = cfg.sims;
-  const args = mcpArgs(s, profileDir, device);
+  const shimFile = path.join(workDir, "browser-shims.js");
+  if (!fs.existsSync(shimFile)) fs.writeFileSync(shimFile, BROWSER_SHIMS);
+  const args = mcpArgs(s, profileDir, device, shimFile);
   let cmd;
   if ((s.agent ?? "claude") === "codex") {
     const toml = "[" + args.map((a) => JSON.stringify(a)).join(",") + "]";

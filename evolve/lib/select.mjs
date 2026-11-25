@@ -128,6 +128,9 @@ export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), 
     combined[a.arm_id] = { trials: r.trials + lambda * s.trials, successes: r.successes + lambda * s.successes, real: r, sims: s };
   }
   const pb = probBest(combined);
+  // If nobody succeeded anywhere, the measurement itself is broken (e.g. the simulated browser can't do something
+  // real browsers can): make no promotions, graduations or kills on it.
+  const anySuccess = Object.values(combined).some((c) => c.successes > 0);
   const champion = arms.find((a) => a.status === "champion");
   const judged = (id) => (sims[id]?.trials ?? 0) >= o.minSims || (real[id]?.trials ?? 0) >= o.minTrials;
   const pbeat = {};
@@ -135,6 +138,7 @@ export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), 
   const mean = (id) => (combined[id].successes + 1) / (combined[id].trials + 2);
 
   let promote = null;
+  if (!anySuccess) return { promote: null, retire: [], graduate: [], spawn: Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - arms.filter((a) => a.status === "nursery").length)), pb, pbeat: {}, combined, lambda, blind: true };
   if (champion && judged(champion.arm_id)) {
     const contenders = arms.filter((a) => a.status !== "champion" && judged(a.arm_id) && pbeat[a.arm_id] >= o.promoteAt);
     contenders.sort((x, y) => mean(y.arm_id) - mean(x.arm_id));
@@ -161,7 +165,7 @@ export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), 
   const dying = new Set(retire.map((r) => r.arm_id));
   const liveLeft = arms.filter((a) => a.status === "live" && !dying.has(a.arm_id)).length;
   const graduate = arms
-    .filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && a.arm_id !== promote && judged(a.arm_id) && (pbeat[a.arm_id] ?? 0) >= o.graduateAt)
+    .filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && a.arm_id !== promote && judged(a.arm_id) && combined[a.arm_id].successes > 0 && (pbeat[a.arm_id] ?? 0) > o.graduateAt)
     .sort((x, y) => mean(y.arm_id) - mean(x.arm_id))
     .slice(0, Math.max(0, o.fieldSize - liveLeft))
     .map((a) => a.arm_id);

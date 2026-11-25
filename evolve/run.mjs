@@ -522,6 +522,7 @@ async function cycle(sp) {
   real = await realStats();
   arms = await alive();
   const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control"), real, sims, weeklyReal: weekly, opts: sel });
+  if (dec.blind) await journal(sp.id, "note", null, "no simulated person or visitor succeeded on any arm this cycle; that usually means the measurement is broken, so no one was promoted, graduated or retired");
   ghNotice(`${sp.id} cycle`, `stage ${st.stage}, gen ${st.generation}, ${arms.length} alive, ${weekly} real visitors/wk, sim weight ${dec.lambda.toFixed(2)}, promote ${dec.promote ?? "-"}, graduate ${dec.graduate.join(",") || "-"}, retire ${dec.retire.length}`);
   if (!DRY && Object.keys(dec.pb).length) {
     const ids = Object.keys(dec.pb);
