@@ -1,0 +1,16 @@
+name: dns
+# Applies ops/dns.json (add-only). Triggered by committing a change to that file.
+on:
+  workflow_dispatch: {}
+  push: { branches: [main], paths: ["ops/dns.json"] }
+permissions: { contents: read }
+jobs:
+  dns:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/dns.mjs

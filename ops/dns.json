@@ -1,0 +1,8 @@
+{
+  "_comment": "DNS records the engine should make sure exist (add-only; never edits or deletes). Commit a change here to apply.",
+  "records": [
+    { "zone": "qrsthatlast.com", "type": "TXT", "name": "qrsthatlast.com", "content": "google-site-verification=0pUcBBJHgkEJi2R-Nl4vADCoL0uuk55ybTiwyrvPt3U" },
+    { "zone": "calmcv.com", "type": "TXT", "name": "calmcv.com", "content": "google-site-verification=vR8hdPpGpulQXeFo7cTLaB1FeSmApccRXPLjeEVX5GU" },
+    { "zone": "kudospage.com", "type": "TXT", "name": "kudospage.com", "content": "google-site-verification=fzIi5fqbJy6nJzLjzg22qmSYBKu9vvIXZJIwvW6KGzs" }
+  ]
+}
