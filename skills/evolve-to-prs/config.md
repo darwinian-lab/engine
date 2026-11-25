@@ -5,10 +5,10 @@
 
 ## Models
 - Planner: default
-- Companion: default
-- Implementer: default
+- Companion: sonnet
+- Implementer: sonnet
 - Reviewer: default
-- Grouper: default
+- Grouper: sonnet
 
 ## Publication
 - Never push or open PRs. The engine publishes from result.json.

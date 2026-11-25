@@ -22,6 +22,8 @@ opens PRs and runs PR review after you finish; you never push.
 
 `config.md` beside this file holds the rules. Read it first. Its Extra guidance passes verbatim to every agent.
 
+When you start a subagent, set its model from `config.md` Models (`default` means inherit yours). Always wait for every subagent you started before you finish; never end your turn while one is still running, and write `result.json` last.
+
 ## Agents
 
 Spawn subagents with the Task tool, passing the role's runbook file path and the run folder. Roles: planner

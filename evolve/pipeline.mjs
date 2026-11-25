@@ -17,6 +17,8 @@ export function makePipeline(d) {
   const { cfg, db, journal, ghNotice, DRY, codex, deployArm, deleteWorker, photograph, stillborn, numstat, gitLock, RateLimited, now, cfEnv } = d;
   const gh = (args, opts = {}) => run("gh", args, { timeoutMs: 120_000, ...opts });
 
+  const LIMIT_RE = /hit your [\w -]*limit|usage limit|rate.?limit|limit reached|quota|credit balance/i;
+
   /** A Claude Code agent with no secrets in its environment. */
   async function agent({ cwd, prompt, model, tools, browser = false, web = false, minutes = 30, json = false, label = "agent" }) {
     fs.mkdirSync(path.join(cwd, ".dw"), { recursive: true });
@@ -36,7 +38,7 @@ export function makePipeline(d) {
     // Each agent gets its own local dev-server port so parallel builders don't collide.
     const r = await claudeStream({ args, cwd, label, timeoutMs: minutes * 60_000, transcriptDir: path.join(cfg.workdir, ".tmp", "transcripts"), env: { DW_DEV_PORT: String(8800 + Math.floor(Math.random() * 900)) } });
     const text = r.out + r.err;
-    if (r.code !== 0 && /rate.?limit|usage limit|limit reached|quota/i.test(text)) throw new RateLimited(text.slice(-500));
+    if (LIMIT_RE.test(r.out) || (r.code !== 0 && LIMIT_RE.test(text))) throw new RateLimited(text.slice(-500));
     return json ? extractJson(r.out) : r;
   }
 

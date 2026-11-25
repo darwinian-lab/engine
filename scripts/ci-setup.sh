@@ -3,7 +3,7 @@
 set -euo pipefail
 : "${DW_GH_TOKEN:?DW_GH_TOKEN secret is missing}"
 ORG=$(jq -r .github.org evolve/settings.json)
-WORK=${DW_WORKDIR:-$GITHUB_WORKSPACE/../work}
+WORK=${DW_WORKDIR:-$(dirname "$GITHUB_WORKSPACE")/work}
 mkdir -p "$WORK/.tmp"
 
 npm install -g --silent @anthropic-ai/claude-code @openai/codex wrangler @playwright/mcp@0.0.86 >/dev/null

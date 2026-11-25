@@ -85,7 +85,7 @@ async function claude(wt, promptText, model) {
   });
   const r = await run(cmd[0], cmd.slice(1), { cwd: wt, timeoutMs: (cfg.timeouts?.mutateMin ?? 40) * 60_000, agent: true, echoPrefix: `[${path.basename(wt)} claude]` });
   const text = r.out + r.err;
-  if (/rate.?limit|usage limit|limit reached|quota/i.test(text) && r.code !== 0) throw new RateLimited(text.slice(-500));
+  if (/hit your [\w -]*limit/i.test(text) || (/rate.?limit|usage limit|limit reached|quota/i.test(text) && r.code !== 0)) throw new RateLimited(text.slice(-500));
   return r;
 }
 
