@@ -80,7 +80,7 @@ export async function runSession({ cfg, db, sp, stageEvent, arm, persona }) {
   let ownerMemory = "";
   let lastShare = "";
   let profile = 0;
-  const email = `${persona.id.split("-")[0]}+${sid}@example.com`;
+  const email = `${persona.id.split("-")[0]}${sid}+clerk_test@example.com`; // Clerk test addresses accept code 424242
   try {
     for (let i = 0; i < persona.phases.length; i++) {
       const ph = persona.phases[i];

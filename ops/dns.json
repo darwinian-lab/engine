@@ -1,8 +1,59 @@
 {
   "_comment": "DNS records the engine should make sure exist (add-only; never edits or deletes). Commit a change here to apply.",
   "records": [
-    { "zone": "qrsthatlast.com", "type": "TXT", "name": "qrsthatlast.com", "content": "google-site-verification=0pUcBBJHgkEJi2R-Nl4vADCoL0uuk55ybTiwyrvPt3U" },
-    { "zone": "calmcv.com", "type": "TXT", "name": "calmcv.com", "content": "google-site-verification=vR8hdPpGpulQXeFo7cTLaB1FeSmApccRXPLjeEVX5GU" },
-    { "zone": "kudospage.com", "type": "TXT", "name": "kudospage.com", "content": "google-site-verification=fzIi5fqbJy6nJzLjzg22qmSYBKu9vvIXZJIwvW6KGzs" }
+    {
+      "zone": "qrsthatlast.com",
+      "type": "TXT",
+      "name": "qrsthatlast.com",
+      "content": "google-site-verification=0pUcBBJHgkEJi2R-Nl4vADCoL0uuk55ybTiwyrvPt3U"
+    },
+    {
+      "zone": "calmcv.com",
+      "type": "TXT",
+      "name": "calmcv.com",
+      "content": "google-site-verification=vR8hdPpGpulQXeFo7cTLaB1FeSmApccRXPLjeEVX5GU"
+    },
+    {
+      "zone": "kudospage.com",
+      "type": "TXT",
+      "name": "kudospage.com",
+      "content": "google-site-verification=fzIi5fqbJy6nJzLjzg22qmSYBKu9vvIXZJIwvW6KGzs"
+    },
+    {
+      "zone": "kudospage.com",
+      "type": "CNAME",
+      "name": "clerk.kudospage.com",
+      "content": "frontend-api.clerk.services"
+    },
+    {
+      "zone": "kudospage.com",
+      "type": "CNAME",
+      "name": "accounts.kudospage.com",
+      "content": "accounts.clerk.services"
+    },
+    {
+      "zone": "kudospage.com",
+      "type": "CNAME",
+      "name": "clkmail.kudospage.com",
+      "content": "mail.yycxwoee76r3.clerk.services"
+    },
+    {
+      "zone": "kudospage.com",
+      "type": "CNAME",
+      "name": "clk._domainkey.kudospage.com",
+      "content": "dkim1.yycxwoee76r3.clerk.services"
+    },
+    {
+      "zone": "kudospage.com",
+      "type": "CNAME",
+      "name": "clk2._domainkey.kudospage.com",
+      "content": "dkim2.yycxwoee76r3.clerk.services"
+    },
+    {
+      "zone": "kudospage.com",
+      "type": "TXT",
+      "name": "_dmarc.kudospage.com",
+      "content": "v=DMARC1; p=none;"
+    }
   ]
 }
