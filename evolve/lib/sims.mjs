@@ -71,7 +71,10 @@ async function agent(cfg, prompt, profileDir, device, workDir, label = "sim") {
   if ((s.agent ?? "claude") === "codex") {
     const toml = "[" + args.map((a) => JSON.stringify(a)).join(",") + "]";
     const out = path.join(workDir, `codex-${rid(6)}.txt`);
+    // Headless Codex cancels MCP calls that "need approval". Pre-approve only this sim's own browser server;
+    // the sandbox stays read-only.
     cmd = ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only", "-c", 'approval_policy="never"',
+      "-c", 'mcp_servers.browser.default_tools_approval_mode="approve"',
       ...(s.codexModel ? ["-m", s.codexModel] : []),
       "-c", `mcp_servers.browser.command=${JSON.stringify(s.mcpCommand ?? "playwright-mcp")}`, "-c", `mcp_servers.browser.args=${toml}`,
       "-c", "mcp_servers.browser.startup_timeout_sec=60", "-c", "mcp_servers.browser.tool_timeout_sec=120", "-o", out, prompt];
