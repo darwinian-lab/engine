@@ -1,0 +1,28 @@
+name: pipetest
+on:
+  # Commit ops/pipetest.json to breed N mutants through the PR pipeline (no simulations, no selection).
+  push: { branches: [main], paths: ["ops/pipetest.json"] } # {"species":"wall","spawn":1}
+concurrency: { group: evolve, cancel-in-progress: false }
+permissions: { contents: write }
+jobs:
+  evolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      DW_GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+      DW_LAB_KEY: ${{ secrets.DW_LAB_KEY }}
+      GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: scripts/ci-setup.sh
+      - name: Breed through the PR pipeline
+        run: node evolve/run.mjs --no-sims --species "$(jq -r .species ops/pipetest.json)" --spawn "$(jq -r .spawn ops/pipetest.json)" --pipeline prs
+      - if: always()
+        run: scripts/ci-finish.sh

@@ -231,3 +231,71 @@ already in the backlog, are honest (no dark patterns), could be built without pa
 make real visitors more likely to succeed or come back. Answer with ONLY JSON:
 {"ideas":[{"title":"...","body":"why, evidence (with source URLs), what to build"}]}`;
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// PR pipeline: hypothesis → evolve-to-prs build → automated PR review with feedback commits.
+// ---------------------------------------------------------------------------------------------------------
+
+export function hypothesisPrompt(ctx) {
+  const body = mutationPrompt(ctx).split("## Your mutation")[0];
+  return `${body}## Your job: choose this mutation's hypothesis (do not write code)
+
+You are the first step of building one mutant. Study the repository (CLAUDE.md, CHARTER.md, BRIEF.md, LESSONS.md and
+the code), then choose ONE hypothesis about what would make more real people succeed. Size: ${ctx.size}.
+Prefer a backlog item when one fits (owner requests first), or a clear idea from what simulated people struggled with.
+Pick a direction different from the siblings. Be concrete enough that a separate team can build it without you.
+
+Answer with ONLY a JSON object:
+{"title": "max 8 words", "hypothesis": "what changes and why it should help real people (2-3 sentences)",
+ "work_item": "the full work description for the builders: user-visible behaviour, scope, out of scope, constraints, risks",
+ "acceptance_criteria": ["observable criteria"], "implements_issue": <issue number or null>, "size": "small|medium|large"}`;
+}
+
+export function buildPrompt({ workItemFile, baseSha, prefix, runDir }) {
+  return `Use the evolve-to-prs skill (installed in your skills) to implement the work item in ${workItemFile}.
+
+- Repository: the current directory (clean worktree at the base).
+- Base SHA: ${baseSha}
+- Branch prefix: ${prefix}
+- Run folder: ${runDir}
+
+There is no human. Work autonomously to the end and write ${runDir}/result.json as the skill describes.`;
+}
+
+export function prReviewPrompt({ workItem, baseSha, headSha, prBodies, history }) {
+  return `Follow the runbook in ~/.claude/skills/evolve-to-prs/pr-reviewer.md.
+
+The repository (current directory) is at the PR's top head ${headSha}; the base is ${baseSha}
+(review \`git diff ${baseSha}...${headSha}\` and \`git log ${baseSha}..${headSha}\`).
+
+## Work item
+${workItem}
+
+## PR description(s)
+${prBodies.slice(0, 12000)}
+
+## Earlier review rounds and the author's dispositions
+${history || "None: this is the first round."}`;
+}
+
+export function addressPrompt({ findings, round }) {
+  return `Follow the runbook in ~/.claude/skills/evolve-to-prs/address-feedback.md (review round ${round}).
+
+## Findings
+${findings.map((f) => `- ${f.id} [${f.blocking ? "BLOCKING" : "non-blocking"}, ${f.severity ?? ""}] ${f.file ?? ""}${f.line ? ":" + f.line : ""}: ${f.problem} → ${f.fix ?? ""}`).join("\n")}`;
+}
+
+export function lessonsPrompt({ product, current, items }) {
+  return `You maintain LESSONS.md for "${product}", a self-evolving website. It tells future mutants which mistakes
+earlier mutants made, so they don't repeat them.
+
+## Current LESSONS.md
+${current}
+
+## New evidence from this cycle (review findings, rejections, failed checks, simulated users' problems)
+${items.join("\n").slice(0, 20000)}
+
+Rewrite LESSONS.md: keep the header line and intro, then at most 30 bullets, newest/most important first. Each bullet is
+one general, actionable rule with the concrete failure it prevents ("Downloads must use the current render: a click
+within 150 ms of an edit exported the previous code"). Merge duplicates; drop one-off trivia. Output ONLY the file content.`;
+}

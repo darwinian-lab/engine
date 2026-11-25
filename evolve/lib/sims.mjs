@@ -72,7 +72,7 @@ async function agent(cfg, prompt, profileDir, device, workDir) {
     const out = path.join(workDir, `codex-${rid(6)}.txt`);
     cmd = ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only",
       "-c", `mcp_servers.browser.command=${JSON.stringify(s.mcpCommand ?? "playwright-mcp")}`, "-c", `mcp_servers.browser.args=${toml}`, "-o", out, prompt];
-    const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * 60_000 });
+    const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * 60_000, agent: true });
     const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : r.out;
     return { ...r, text };
   }
@@ -80,7 +80,7 @@ async function agent(cfg, prompt, profileDir, device, workDir) {
   fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: { browser: { command: s.mcpCommand ?? "playwright-mcp", args } } }));
   cmd = ["claude", "-p", prompt, "--model", s.model ?? "haiku", "--mcp-config", mcpFile, "--strict-mcp-config",
     "--allowedTools", "mcp__browser", "--max-turns", String(s.maxTurns ?? 45), "--output-format", "text"];
-  const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * 60_000 });
+  const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * 60_000, agent: true });
   return { ...r, text: r.out };
 }
 

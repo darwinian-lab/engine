@@ -78,7 +78,10 @@
     "mutate": "opus",
     "repair": "sonnet",
     "curate": "sonnet",
-    "ideate": "sonnet"
+    "ideate": "sonnet",
+    "hypothesis": "opus",
+    "review": "opus",
+    "address": "opus"
   },
   "selection": {
     "minTrials": 100,
@@ -88,7 +91,8 @@
   "maxSpawnPerRun": 3,
   "timeouts": {
     "mutateMin": 40,
-    "evolveEveryHours": 6
+    "evolveEveryHours": 6,
+    "buildMin": 150
   },
   "dryRun": false,
   "reminders": [
@@ -132,5 +136,7 @@
     "maxNewPerCycle": 3
   },
   "repairRounds": 3,
-  "auditFixRounds": 3
+  "auditFixRounds": 3,
+  "pipeline": "single",
+  "prReviewRounds": 3
 }

@@ -21,9 +21,11 @@ command -v ffmpeg >/dev/null || sudo apt-get install -y -qq ffmpeg >/dev/null 2>
 
 git config --global user.name "darwinian"
 git config --global user.email "evolve@darwinian.local"
-git config --global url."https://x-access-token:${DW_GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-
+# No global git credentials: the engine passes them per process (GIT_CONFIG_* env), so AI agents never see them.
 for repo in $(jq -r '.species[].repo' evolve/settings.json); do
-  [ -d "$WORK/$repo" ] || git clone -q "https://github.com/$ORG/$repo.git" "$WORK/$repo"
+  [ -d "$WORK/$repo" ] || git -c url."https://x-access-token:${DW_GH_TOKEN}@github.com/".insteadOf="https://github.com/" clone -q "https://github.com/$ORG/$repo.git" "$WORK/$repo"
 done
+
+# Skills the engine's agents use (evolve-to-prs: autonomous adaptation of work-to-prs).
+mkdir -p ~/.claude/skills && cp -r skills/* ~/.claude/skills/
 echo "DW_WORKDIR=$WORK" >> "$GITHUB_ENV"

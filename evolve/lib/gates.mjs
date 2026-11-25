@@ -36,14 +36,16 @@ export function protectedViolations(changes, protectedList, wt) {
   return v;
 }
 
-export async function gate(wt, ref, species) {
+export async function gate(wt, ref, species, { requireMutationFile = true } = {}) {
   const problems = [];
   const changes = await changedFiles(wt, ref);
   if (changes.length === 0) return { ok: false, failure: "No changes were made.", changes };
   problems.push(...protectedViolations(changes, species.protected ?? [], wt));
-  if (!changes.some((c) => c.path === "MUTATION.md" && c.status !== "D")) problems.push("MUTATION.md was not written for this mutation.");
-  for (const script of ["test", "typecheck", "build"]) {
-    const r = await run("npm", ["run", "--silent", script], { cwd: wt, timeoutMs: 5 * 60_000 });
+  if (requireMutationFile && !changes.some((c) => c.path === "MUTATION.md" && c.status !== "D")) problems.push("MUTATION.md was not written for this mutation.");
+  const pkg = JSON.parse(fs.readFileSync(path.join(wt, "package.json"), "utf8"));
+  for (const script of ["test", "typecheck", "build", "e2e"]) {
+    if (!pkg.scripts?.[script]) continue;
+    const r = await run("npm", ["run", "--silent", script], { cwd: wt, timeoutMs: (script === "e2e" ? 8 : 5) * 60_000, agent: true });
     if (r.code !== 0) problems.push(`npm run ${script} failed:\n${(r.out + r.err).slice(-3000)}`);
   }
   return { ok: problems.length === 0, failure: problems.join("\n\n"), changes };

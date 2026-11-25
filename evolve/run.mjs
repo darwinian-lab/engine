@@ -17,6 +17,7 @@ import { loadPersonas, runSims, simStatsFor, simDigest } from "./lib/sims.mjs";
 import { pickRevivals, isRevivable } from "./lib/seeds.mjs";
 import { ensureLabels, listIssues, backlogText, applyCuration, createIssue, comment, closeIssue, parseImplements } from "./lib/issues.mjs";
 import { ENGINE_DIR } from "./lib/config.mjs";
+import { makePipeline } from "./pipeline.mjs";
 import { run, must, expand, rid, log, lock, extractJson, readJson, stripHtml } from "./lib/util.mjs";
 import { capture, storeMedia } from "./lib/shots.mjs";
 
@@ -41,8 +42,17 @@ if (!cfg.cloudflare.apiToken || !cfg.cloudflare.d1Engine || !cfg.routerKey) {
   process.exit(1);
 }
 const DRY = args.includes("--dry-run") || cfg.dryRun;
+if (process.env.DW_GH_TOKEN) {
+  process.env.GIT_CONFIG_COUNT = "1";
+  process.env.GIT_CONFIG_KEY_0 = `url.https://x-access-token:${process.env.DW_GH_TOKEN}@github.com/.insteadOf`;
+  process.env.GIT_CONFIG_VALUE_0 = "https://github.com/";
+  process.env.GH_TOKEN = process.env.DW_GH_TOKEN;
+}
 // --sim-only: run simulated sessions (optionally --sims N) without breeding or selecting. For testing the harness.
 const SIM_ONLY = args.includes("--sim-only");
+// --spawn N: breed exactly N mutants this run; --no-sims: skip simulated users (pipeline tests).
+const SPAWN_OVERRIDE = argv("--spawn") != null ? Number(argv("--spawn")) : null;
+const NO_SIMS = args.includes("--no-sims");
 const db = d1(cfg, cfg.cloudflare.d1Engine);
 const cfEnv = { CLOUDFLARE_API_TOKEN: cfg.cloudflare.apiToken, CLOUDFLARE_ACCOUNT_ID: cfg.cloudflare.accountId };
 const now = () => Date.now();
@@ -73,7 +83,7 @@ async function claude(wt, promptText, model) {
     prompt: "Read the file .dw/prompt.md and carry out the instructions in it exactly. Work autonomously until done.",
     model,
   });
-  const r = await run(cmd[0], cmd.slice(1), { cwd: wt, timeoutMs: (cfg.timeouts?.mutateMin ?? 40) * 60_000 });
+  const r = await run(cmd[0], cmd.slice(1), { cwd: wt, timeoutMs: (cfg.timeouts?.mutateMin ?? 40) * 60_000, agent: true });
   const text = r.out + r.err;
   if (/rate.?limit|usage limit|limit reached|quota/i.test(text) && r.code !== 0) throw new RateLimited(text.slice(-500));
   return r;
@@ -88,7 +98,7 @@ async function codexRaw(promptText, tag) {
   const promptFile = out.replace(/\.txt$/, ".prompt.md");
   fs.writeFileSync(promptFile, promptText);
   const cmd = expand(cfg.commands.codex, { out, prompt: `Read ${promptFile} and answer exactly as it asks. Do not modify any files.` });
-  const r = await run(cmd[0], cmd.slice(1), { cwd: path.dirname(out), timeoutMs: 15 * 60_000 });
+  const r = await run(cmd[0], cmd.slice(1), { cwd: path.dirname(out), timeoutMs: 15 * 60_000, agent: true });
   const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : r.out;
   fs.rmSync(promptFile, { force: true });
   fs.rmSync(out, { force: true });
@@ -387,7 +397,7 @@ async function probe(sp, species) {
   fs.mkdirSync(dir, { recursive: true });
   const prompt = `Search the web as a normal user would for: "${q}". Based on what you find, list the 5 websites you would recommend to that user, most recommended first. Then answer ONLY with JSON: {"recommended":["domain1",...],"mentions_${sp.domain.replace(/\W/g, "_")}":true|false}`;
   const cmd = expand(cfg.commands.probe ?? ["claude", "-p", "{prompt}", "--model", "sonnet", "--allowedTools", "WebSearch,WebFetch", "--output-format", "text"], { prompt });
-  const r = await run(cmd[0], cmd.slice(1), { cwd: dir, timeoutMs: 8 * 60_000 });
+  const r = await run(cmd[0], cmd.slice(1), { cwd: dir, timeoutMs: 8 * 60_000, agent: true });
   const j = extractJson(r.out);
   if (!j) return;
   const found = (j.recommended ?? []).some((d) => String(d).includes(sp.domain));
@@ -395,6 +405,7 @@ async function probe(sp, species) {
 }
 
 async function cycle(sp) {
+  const cycleStart = now();
   const repo = path.join(cfg.workdir, sp.repo);
   const repoSlug = `${cfg.github.org}/${sp.repo}`;
   await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
@@ -461,7 +472,7 @@ async function cycle(sp) {
     return;
   }
   const nurseryNow = arms.filter((a) => a.status === "nursery").length;
-  const toSpawn = SIM_ONLY ? 0 : DRY ? Math.min(1, sel.spawnPerCycle) : Math.max(0, Math.min(sel.spawnPerCycle, sel.nurserySize - nurseryNow));
+  const toSpawn = SPAWN_OVERRIDE != null ? SPAWN_OVERRIDE : SIM_ONLY ? 0 : DRY ? Math.min(1, sel.spawnPerCycle) : Math.max(0, Math.min(sel.spawnPerCycle, sel.nurserySize - nurseryNow));
   const dead = await db.all("SELECT * FROM arms WHERE species=? AND status IN ('retired','stillborn','dead') AND mutation IS NOT NULL", [sp.id]);
   const revivals = toSpawn ? pickRevivals({ dead, alive: arms, gen: st.generation, opts: cfg.seeds ?? {} }) : [];
   const jobs = [];
@@ -486,7 +497,17 @@ async function cycle(sp) {
       while (spawnQueue.length && !rateLimited) {
         const { parent, revival } = spawnQueue.shift();
         try {
-          await spawnOne(sp, repo, species, brief, st, parent, siblings, { backlog: backlogText(issues), revival });
+          if ((argv("--pipeline") ?? cfg.pipeline ?? "prs") === "prs") {
+            const stg = species.stages[Math.min(st.stage, species.stages.length - 1)];
+            const lineageRows = await db.all("SELECT * FROM arms WHERE species=? AND status NOT IN ('control','stillborn') ORDER BY created_at DESC LIMIT 25", [sp.id]);
+            const promptCtx = {
+              species, brief, stage: stg.name, stageEvent: stg.describe ?? `trigger "${stg.event}"`,
+              lineage: lineageText(lineageRows), siblings: siblings.map((x) => `- ${x.arm_id}: ${(x.hypothesis ?? "").slice(0, 200)}`).join("\n"),
+              insights: await insights(sp.id), protectedFiles: species.protected ?? [], backlog: backlogText(issues),
+              simFeedback: await simDigest(db, sp.id, parent.arm_id), revival,
+            };
+            await pipe.spawnPR(sp, repo, species, brief, st, parent, siblings, { revival, promptCtx });
+          } else await spawnOne(sp, repo, species, brief, st, parent, siblings, { backlog: backlogText(issues), revival });
         } catch (e) {
           if (e instanceof RateLimited) {
             rateLimited = true;
@@ -509,14 +530,14 @@ async function cycle(sp) {
   let pre = decideNursery({ arms: evolving, real, sims, weeklyReal: weekly, opts: sel });
   const personas = loadPersonas(ENGINE_DIR, sp.id);
   let simResults = [];
-  if (!DRY && simCfg.enabled !== false && personas.length) {
+  if (!DRY && !NO_SIMS && simCfg.enabled !== false && personas.length) {
     simResults = await runSims({ cfg: { ...cfg, sims: simCfg }, db, sp, stageEvent: stage.event, arms: competing, personas, budget: Number(argv("--sims") ?? simCfg.sessionsPerSpecies ?? 24), minSims: sel.minSims, combined: pre.combined });
     if (simResults.rateLimited) await journal(sp.id, "note", null, "simulations paused: model usage limit reached");
     const ok = simResults.filter((r) => r.outcome === "success").length;
     if (simResults.length) await journal(sp.id, "sims", null, `${simResults.length} simulated sessions: ${ok} succeeded. ${[...new Set(simResults.map((r) => r.arm_id))].map((id) => { const rs = simResults.filter((r) => r.arm_id === id); return `${id} ${rs.filter((r) => r.outcome === "success").length}/${rs.length}`; }).join(", ")}`);
   }
 
-  if (SIM_ONLY) return;
+  if (SIM_ONLY || NO_SIMS) return;
   // 3. Select: promote, graduate, retire.
   sims = await simStatsFor(db, sp.id);
   real = await realStats();
@@ -536,13 +557,27 @@ async function cycle(sp) {
       const a = arms.find((x) => x.arm_id === r.arm_id);
       await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=?, revivable=? WHERE species=? AND arm_id=?", [now(), r.cause, st.generation, r.score ?? 0.3, isRevivable(r.cause) ? 1 : 0, sp.id, r.arm_id]);
       await journal(sp.id, "retire", r.arm_id, r.cause);
+      await pipe.closePRs(sp, a, r.cause).catch((e) => log(`closing PRs failed: ${e.message}`));
       if (a?.status !== "champion" || dec.promote) await deleteWorker(`sp-${sp.id}-${r.arm_id}`);
     }
     for (const id of dec.graduate) {
       await db.run("UPDATE arms SET status='live', graduated_at=? WHERE species=? AND arm_id=?", [now(), sp.id, id]);
       await journal(sp.id, "graduate", id, `left the nursery for real traffic: P(better than champion)=${dec.pbeat[id].toFixed(2)} [${dec.combined[id].sims.successes}/${dec.combined[id].sims.trials} simulated]`);
     }
-    if (dec.promote) {
+    if (dec.promote && arms.find((a) => a.arm_id === dec.promote)?.prs) {
+      const winner = arms.find((a) => a.arm_id === dec.promote);
+      const outcome = await pipe.promotePR(sp, repo, species, st, winner).catch((e) => (log(`promotion failed: ${e.message}`), "failed"));
+      if (outcome === "finalist") {
+        await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.9, revivable=0 WHERE species=? AND arm_id=?", [now(), `won, then continued as finalist ${winner.arm_id}r rebased onto main`, st.generation, sp.id, winner.arm_id]);
+        await journal(sp.id, "finalist", `${winner.arm_id}r`, `${winner.arm_id} won selection but main moved since it was bred; its change was rebased onto main and must confirm itself in the nursery before merging`);
+        await deleteWorker(`sp-${sp.id}-${winner.arm_id}`);
+        dec.promote = null;
+      } else if (outcome === "failed") {
+        await journal(sp.id, "note", winner.arm_id, "would have been promoted, but it could not be merged or rebased onto main cleanly; it stays a challenger");
+        dec.promote = null;
+      } else dec.mergedViaPR = true;
+    }
+    if (dec.promote && !dec.mergedViaPR) {
       const winner = arms.find((a) => a.arm_id === dec.promote);
       // Merge the winner into main normally: main keeps everything already on it (earlier winners, owner updates).
       await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
@@ -584,6 +619,13 @@ async function cycle(sp) {
   }
   if (!DRY) await ideate(sp, species, brief, repoSlug, issues, champion).catch((e) => log(`[${sp.id}] ideation failed: ${e.message}`));
 
+  // LESSONS.md: distil this cycle's rejections and simulated users' problems for future mutants.
+  if (!DRY) {
+    const rejects = await db.all("SELECT detail FROM journal WHERE species=? AND kind IN ('reject','note') AND ts>?", [sp.id, cycleStart]);
+    const stuck = simResults.flatMap((r) => (r.report?.phases ?? []).flatMap((p) => p.stuck ?? [])).slice(0, 30);
+    const items = [...rejects.map((r) => `rejected: ${r.detail}`), ...stuck.map((x) => `simulated user got stuck: ${x}`)];
+    await pipe.updateLessons(sp, repo, species, items).catch((e) => log(`[${sp.id}] lessons update failed: ${e.message}`));
+  }
   await announce(sp);
   await probe(sp, species).catch((e) => log(`[${sp.id}] probe failed: ${e.message}`));
   if (rateLimited || simResults.rateLimited) throw new RateLimited("usage limit");
@@ -592,7 +634,7 @@ async function cycle(sp) {
 /** Sonnet turns simulated feedback into backlog actions. */
 async function curate(product, issues, feedback) {
   const dir = path.join(cfg.workdir, ".tmp");
-  const r = await run("claude", ["-p", curatorPrompt({ product, issues, feedback }), "--model", cfg.models.curate ?? "sonnet", "--output-format", "text"], { cwd: dir, timeoutMs: 5 * 60_000 });
+  const r = await run("claude", ["-p", curatorPrompt({ product, issues, feedback }), "--model", cfg.models.curate ?? "sonnet", "--output-format", "text"], { cwd: dir, timeoutMs: 5 * 60_000, agent: true });
   return extractJson(r.out);
 }
 
@@ -603,12 +645,14 @@ async function ideate(sp, species, brief, repoSlug, issues, champion) {
   const pages = (await Promise.all((sp.screenPages ?? ["/"]).map((p) => fetchText(champion.origin, p)))).join("\n");
   const probes = (await db.all("SELECT detail FROM journal WHERE species=? AND kind='probe' ORDER BY ts DESC LIMIT 4", [sp.id])).map((p) => p.detail).join("\n");
   const dir = path.join(cfg.workdir, ".tmp");
-  const r = await run("claude", ["-p", ideationPrompt({ product: species.brand.name, brief, pages, issues, probes }), "--model", cfg.models.ideate ?? "sonnet", "--allowedTools", "WebSearch,WebFetch", "--output-format", "text"], { cwd: dir, timeoutMs: 10 * 60_000 });
+  const r = await run("claude", ["-p", ideationPrompt({ product: species.brand.name, brief, pages, issues, probes }), "--model", cfg.models.ideate ?? "sonnet", "--allowedTools", "WebSearch,WebFetch", "--output-format", "text"], { cwd: dir, timeoutMs: 10 * 60_000, agent: true });
   const j = extractJson(r.out);
   const ideas = (j?.ideas ?? []).slice(0, 2);
   for (const idea of ideas) await createIssue(repoSlug, { title: idea.title, body: `${idea.body}\n\n_Proposed by the Darwinian ideation agent._`, label: "from:ideation" }).catch((e) => log(`ideation issue failed: ${e.message}`));
   await journal(sp.id, "ideation", null, ideas.length ? `proposed: ${ideas.map((i) => i.title).join(" | ")}` : "no new ideas");
 }
+
+const pipe = makePipeline({ cfg, db, journal, ghNotice, DRY, codex, deployArm, deleteWorker, photograph, stillborn, numstat, gitLock, RateLimited, now, cfEnv });
 
 const release = lock(path.join(cfg.workdir, ".tmp", "evolve.lock"));
 if (!release) {

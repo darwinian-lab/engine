@@ -5,9 +5,17 @@ import path from "node:path";
 export const log = (...a) => console.log(new Date().toISOString().slice(0, 19), ...a);
 
 /** Run a command, capture output. Never throws; returns { code, out, err }. */
-export function run(cmd, args, { cwd, timeoutMs = 10 * 60_000, input, env } = {}) {
+// Environment for AI agents: no secrets (Cloudflare, GitHub, lab key) and no git credentials, only what the CLIs need.
+const AGENT_ENV_KEEP = /^(PATH|HOME|USER|LANG|LC_\w+|TERM|TMPDIR|SHELL|CI|NODE_\w+|npm_config_\w+|PLAYWRIGHT_BROWSERS_PATH|CLAUDE_CODE_OAUTH_TOKEN|DW_CHROME|XDG_\w+)$/;
+export function agentEnv(extra = {}) {
+  const env = {};
+  for (const [k, v] of Object.entries(process.env)) if (AGENT_ENV_KEEP.test(k)) env[k] = v;
+  return { ...env, ...extra };
+}
+
+export function run(cmd, args, { cwd, timeoutMs = 10 * 60_000, input, env, agent = false } = {}) {
   return new Promise((resolve) => {
-    const p = spawn(cmd, args, { cwd, env: { ...process.env, ...env }, stdio: ["pipe", "pipe", "pipe"] });
+    const p = spawn(cmd, args, { cwd, env: agent ? agentEnv(env) : { ...process.env, ...env }, stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
     let err = "";
     const t = setTimeout(() => {
