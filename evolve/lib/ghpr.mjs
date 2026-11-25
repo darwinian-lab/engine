@@ -1,21 +1,31 @@
 // Pull requests over GitHub's REST API only. `gh pr create/ready` go through GraphQL, which failed for the engine's
 // fine-grained token with opaque "Something went wrong" errors. REST works with "Pull requests: write", and every
 // call retries transient server errors.
-import { run } from "./util.mjs";
 
 const env = () => ({ GH_TOKEN: process.env.DW_GH_TOKEN ?? process.env.GH_TOKEN ?? "" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_BODY = 60000;
 
 export async function api(method, route, body, { tries = 4 } = {}) {
-  const args = ["api", "-X", method, route, "-H", "Accept: application/vnd.github+json"];
-  if (body !== undefined) args.push("--input", "-");
+  const token = env().GH_TOKEN;
   for (let i = 1; ; i++) {
-    const r = await run("gh", args, { env: env(), input: body === undefined ? undefined : JSON.stringify(body), timeoutMs: 60_000 });
-    if (r.code === 0) return r.out.trim() ? JSON.parse(r.out) : {};
-    const text = `${r.err}\n${r.out}`;
-    const transient = /HTTP 5\d\d|Something went wrong|timed? ?out|ECONNRESET|EOF|secondary rate limit/i.test(text);
-    if (!transient || i >= tries) throw new Error(`gh api ${method} ${route}: ${text.trim().slice(-400)}`);
+    let status = 0;
+    let text = "";
+    try {
+      const res = await fetch(`https://api.github.com/${route}`, {
+        method,
+        headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "darwinian-engine", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(60_000),
+      });
+      status = res.status;
+      text = await res.text();
+      if (res.ok) return text.trim() ? JSON.parse(text) : {};
+    } catch (e) {
+      text = String(e.message ?? e);
+    }
+    const transient = status === 0 || status >= 500 || /secondary rate limit/i.test(text);
+    if (!transient || i >= tries) throw new Error(`GitHub ${method} ${route} -> ${status || "network error"}: ${text.trim().slice(0, 400)}`);
     await sleep(5000 * i);
   }
 }
