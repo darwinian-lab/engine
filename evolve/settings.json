@@ -115,7 +115,7 @@
   },
   "sims": {
     "enabled": true,
-    "agent": "claude",
+    "agent": "codex",
     "model": "haiku",
     "sessionsPerSpecies": 24,
     "concurrency": 4,
