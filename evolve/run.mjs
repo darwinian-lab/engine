@@ -119,7 +119,7 @@ async function insights(spId) {
 
 async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
   const armId = `g${st.generation + 1}-${rid()}`;
-  const ref = parent.git_ref || "main";
+  let ref = parent.git_ref || "main";
   const wt = path.join(cfg.workdir, "wt", `${sp.id}-${armId}`);
   const size = mutationSize();
   log(`[${sp.id}] spawning ${armId} from ${parent.arm_id} (${size})`);
@@ -128,6 +128,17 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
     await run("git", ["worktree", "remove", "--force", wt], { cwd: repo });
   };
   try {
+    // Protected files (charter, brief, species.json, config, migrations) belong to the owner and live on main.
+    // Sync them into the child before mutating, so engine-side updates reach every new lineage.
+    for (const p of species.protected ?? []) {
+      await run("git", ["checkout", "origin/main", "--", p.replace(/\/$/, "")], { cwd: wt });
+    }
+    if ((await run("git", ["status", "--porcelain"], { cwd: wt })).out.trim()) {
+      await must("git", ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local", "commit", "-q", "-am", "sync protected files from main"], { cwd: wt });
+      await run("git", ["add", "-A"], { cwd: wt });
+      await run("git", ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local", "commit", "-q", "-m", "sync new protected files"], { cwd: wt });
+    }
+    ref = (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim();
     fs.symlinkSync(path.join(repo, "node_modules"), path.join(wt, "node_modules"));
     fs.appendFileSync(path.join(repo, ".git", "info", "exclude"), "\n.dw/\nnode_modules\n");
 
