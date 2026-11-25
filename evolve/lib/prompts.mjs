@@ -131,9 +131,10 @@ ${earlier ? `=== EARLIER AUDIT ROUNDS ON THIS CHANGE ===
 ${earlier.slice(0, 12000)}
 
 This is a re-audit after fixes. First check whether each earlier blocking problem is fixed; keep it only if it is
-not. Raise a NEW blocking problem only for a clear charter violation or a bug that would actually harm, mislead or
-lose data for real people. Do not move the goalposts: wording, consistency and hardening ideas you could have raised
-before are notes now.
+not. Raise a NEW blocking problem only for a clear charter violation (dark pattern, deception, privacy breach, fake
+proof, tracking without consent, protected-file edits, destructive migrations). Ordinary bugs and edge cases are the
+code reviewer's job, not yours: list them as notes. Do not move the goalposts: anything you could have raised in an
+earlier round is a note now.
 
 ` : ""}Answer with ONLY a JSON object:
 {"verdict":"pass"|"fail","violations":["blocking problem, specific and actionable", ...],"notes":["minor note", ...],"summary":"one sentence describing the change"}`;
