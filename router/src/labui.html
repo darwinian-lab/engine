@@ -370,7 +370,7 @@ function render() {
     </section>
     <div class="grid two">
       <section class="panel"><h2>How each competitor is doing</h2><p class="sub" id="fitSub"></p><div id="fit"></div></section>
-      <section class="panel"><h2>Chance of being the best, over time</h2><p class="sub">Each competitor's chance of being the best, given everything observed so far, measured once per evolve cycle. Dots are measurements; a value holds until the next one. A challenger takes over once it is 95% likely to beat the champion.</p><div id="pbChart"></div></section>
+      <section class="panel"><h2>Chance of being the best, over time</h2><p class="sub">Each competitor's chance of being the best, given everything observed so far, measured once per evolve cycle; the dot is the latest measurement. A challenger takes over once it is 95% likely to beat the champion.</p><div id="pbChart"></div></section>
     </div>
     <div class="grid two">
       <section class="panel"><h2>Where visitors came from</h2><p class="sub">Distinct visitors per day over the last 30 days, by the site that sent them. Your own visits aren't counted.</p><div id="src"></div></section>
@@ -616,15 +616,13 @@ function drawPb() {
   const labels = [];
   for (const a of shown) {
     const s = byArm[a.arm_id];
-    // Step line: a value holds until the next measurement.
-    let d = `M${x(s[0].ts).toFixed(1)},${y(s[0].pbest).toFixed(1)}`;
-    for (let i = 1; i < s.length; i++) d += ` H${x(s[i].ts).toFixed(1)} V${y(s[i].pbest).toFixed(1)}`;
+    // Straight lines between measurements; after the last one the value continues flat to now (if still competing).
     const last = s[s.length - 1];
-    // Still competing: the last measurement holds until now (faint). Ended: the line stops at its last measurement.
     const end = alive(a) ? t1 : last.ts;
-    g += `<path d="${d}" fill="none" stroke="${color[a.arm_id]}" stroke-width="2" stroke-linejoin="round"/>`;
-    if (end > last.ts) g += `<line x1="${x(last.ts)}" x2="${x(end)}" y1="${y(last.pbest)}" y2="${y(last.pbest)}" stroke="${color[a.arm_id]}" stroke-width="2" stroke-opacity=".35" stroke-dasharray="3 3"/>`;
-    for (const h of s) g += `<circle cx="${x(h.ts)}" cy="${y(h.pbest)}" r="${h === last ? 4 : 2.6}" fill="${color[a.arm_id]}" stroke="var(--panel)" stroke-width="${h === last ? 2 : 1}"/>`;
+    const pts = s.map((h) => `${x(h.ts).toFixed(1)},${y(h.pbest).toFixed(1)}`);
+    if (end > last.ts) pts.push(`${x(end).toFixed(1)},${y(last.pbest).toFixed(1)}`);
+    g += `<polyline points="${pts.join(" ")}" fill="none" stroke="${color[a.arm_id]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    g += `<circle cx="${x(last.ts)}" cy="${y(last.pbest)}" r="4" fill="${color[a.arm_id]}" stroke="var(--panel)" stroke-width="2"/>`;
     labels.push({ y: y(last.pbest), x: x(end), text: a.arm_id + (alive(a) ? "" : " (ended)"), c: color[a.arm_id] });
   }
   labels.sort((p, q) => p.y - q.y);
