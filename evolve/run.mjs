@@ -199,6 +199,12 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
     }
     const { name, origin } = await deployArm(sp, wt, armId);
 
+    // A fresh *.workers.dev deployment can answer 404 for a little while: wait until it serves the home page.
+    for (let i = 0; i < 18; i++) {
+      const r = await fetch(origin + "/", { headers: { "x-dw-key": cfg.routerKey } }).catch(() => null);
+      if (r && r.status !== 404 && r.status < 500) break;
+      await new Promise((res) => setTimeout(res, 5000));
+    }
     // Persona screen: compare the child's key pages against its parent's.
     const pages = sp.screenPages ?? ["/", "/pricing"];
     const parentText = (await Promise.all(pages.map((p) => fetchText(parent.origin, p)))).join("\n");
