@@ -5,13 +5,16 @@ import type { Env } from "./index";
 import type { SpeciesConfig } from "./config";
 
 export const WINDOW_MS = 14 * 24 * 3600 * 1000;
+// Before this moment a "visitor" only had to run JavaScript, so bots and site checkers counted as people.
+// Real-visitor statistics start here (the moment the interaction-based tracker went live).
+export const REAL_DATA_SINCE = Date.UTC(2026, 10, 25, 10, 3);
 const KILL_MIN_REQUESTS = 50;
 const KILL_ERROR_RATE = 0.05;
 
 export async function aggregate(env: Env) {
   const sp = env.SPECIES;
   const now = Date.now();
-  const since = now - WINDOW_MS;
+  const since = Math.max(now - WINDOW_MS, REAL_DATA_SINCE);
 
   const cfgRow = await env.DB.prepare("SELECT json FROM species_config WHERE species = ?").bind(sp).first<{ json: string }>();
   if (!cfgRow) return;
