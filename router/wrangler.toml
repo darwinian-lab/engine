@@ -10,7 +10,7 @@ crons = ["*/15 * * * *"]
 
 [env.qr]
 name = "dw-router-qr"
-vars = { SPECIES = "qr" }
+vars = { SPECIES = "qr", EVOLVE_EVERY_H = "2" }
 routes = [{ pattern = "qrsthatlast.com", custom_domain = true }]
 d1_databases = [{ binding = "DB", database_name = "darwinian", database_id = "7af0faf8-b931-4de5-8d33-0dd72170b28e" }]
 
