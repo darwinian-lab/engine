@@ -174,10 +174,15 @@ Open ${url}
   If a verification code is ever asked for, try 424242.
 - Do not pay for anything.
 
+## Rating scale (be honest and use the whole scale; most sites deserve a 3)
+1 = I failed or would never come back. 2 = I got there but it was frustrating. 3 = it worked, nothing special,
+I'd use something else just as happily. 4 = clearly good: fast, obvious, I'd come back. 5 = delighted, I'd recommend it
+to a friend. Think about what this person would compare it with (the sites they usually use).
+
 ## When you are finished (or give up)
 Reply with ONLY this JSON, nothing else:
 {"done": true|false, "gave_up": "reason, or empty", "stuck": ["specific moments you were confused or blocked"],
- "wishes": ["things you wished the site did or had"], "liked": ["things that worked well"], "rating": 1-5,
+ "wishes": ["things you wished the site did or had"], "liked": ["things that worked well"], "rating": 1-5 (see scale),
  "remember": "what you would realistically remember or still have next time (including any links you saved)",
  "share": "exactly what you would send to someone else, if anything (e.g. a link with a short message)",
  "summary": "2-3 sentences in first person about how it went"}`;
