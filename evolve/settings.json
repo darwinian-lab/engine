@@ -85,7 +85,8 @@
   },
   "selection": {
     "minTrials": 100,
-    "promoteAt": 0.95,
+    "promoteAt": 0.8,
+    "maxLoss": 0.005,
     "killAt": 0.1
   },
   "maxSpawnPerRun": 3,

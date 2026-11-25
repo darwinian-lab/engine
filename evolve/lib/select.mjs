@@ -88,6 +88,20 @@ export function mutationSize(rng = Math.random) {
   return x < 0.5 ? "small" : x < 0.85 ? "medium" : "large";
 }
 
+/**
+ * Expected loss of choosing a over b: the average amount (in success rate) by which a falls short of b, over the
+ * draws where it does. Small means switching is safe even if a turns out not to be better.
+ */
+export function expectedLoss(a, b, draws = 4000, rng = Math.random) {
+  let loss = 0;
+  for (let i = 0; i < draws; i++) {
+    const x = beta(1 + a.successes, 1 + a.trials - a.successes, rng);
+    const y = beta(1 + b.successes, 1 + b.trials - b.successes, rng);
+    if (y > x) loss += y - x;
+  }
+  return loss / draws;
+}
+
 /** P(a beats b) for two Beta posteriors, by sampling. */
 export function probBeats(a, b, draws = 4000, rng = Math.random) {
   let w = 0;
@@ -102,7 +116,8 @@ export const NURSERY_DEFAULTS = {
   simFadeAt: 50, // ...shrinking as real weekly visitors grow (weight / (1 + weekly/simFadeAt))
   minSims: 6, // sessions before an arm can be judged on simulations
   minTrials: 100, // real visitors before an arm can be judged on real traffic alone
-  promoteAt: 0.95, // P(beats champion) to take over
+  promoteAt: 0.8, // floor: P(beats champion) needed before expected loss is even considered
+  maxLoss: 0.005, // promote when switching would cost at most this much success rate if we're wrong
   killAt: 0.1, // P(beats champion) below which a judged arm dies
   graduateAt: 0.5, // P(beats champion) for a nursery arm to get real traffic
   fieldSize: 2, // live arms competing for real traffic besides champion and control
@@ -136,12 +151,14 @@ export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), 
   const pbeat = {};
   for (const a of arms) pbeat[a.arm_id] = champion && a.arm_id !== champion.arm_id ? probBeats(combined[a.arm_id], combined[champion.arm_id]) : null;
   const mean = (id) => (combined[id].successes + 1) / (combined[id].trials + 2);
+  const loss = {};
 
   // Every arm that clearly beats the champion is promoted, best first: unrelated improvements can all land.
   let promotions = [];
   if (!anySuccess) return { promote: null, promotions: [], retire: [], graduate: [], spawn: Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - arms.filter((a) => a.status === "nursery").length)), pb, pbeat: {}, combined, lambda, blind: true };
   if (champion && judged(champion.arm_id)) {
-    const contenders = arms.filter((a) => a.status !== "champion" && judged(a.arm_id) && pbeat[a.arm_id] >= o.promoteAt);
+    // Promote when it is probably better AND a wrong switch would cost almost nothing (Bayesian expected loss).
+    const contenders = arms.filter((a) => a.status !== "champion" && judged(a.arm_id) && pbeat[a.arm_id] >= o.promoteAt && (loss[a.arm_id] = expectedLoss(combined[a.arm_id], combined[champion.arm_id])) <= o.maxLoss);
     contenders.sort((x, y) => mean(y.arm_id) - mean(x.arm_id));
     promotions = contenders.map((a) => a.arm_id);
   }
@@ -171,5 +188,5 @@ export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), 
     .map((a) => a.arm_id);
   const nurseryLeft = arms.filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && !graduate.includes(a.arm_id) && !winning.has(a.arm_id)).length;
   const spawn = Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - nurseryLeft));
-  return { promote, promotions, retire, graduate, spawn, pb, pbeat, combined, lambda };
+  return { promote, promotions, retire, graduate, spawn, pb, pbeat, loss, combined, lambda };
 }

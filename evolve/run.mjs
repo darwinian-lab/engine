@@ -632,7 +632,7 @@ async function cycle(sp) {
       await deployArm(sp, repo, winner.arm_id).catch((e) => log(`[${sp.id}] redeploying champion from main failed: ${e.message}`));
       if (old) await deleteWorker(`sp-${sp.id}-${old.arm_id}`);
       const c = dec.combined[id];
-      await journal(sp.id, "promote", id, `new champion: P(better than ${champion.arm_id})=${dec.pbeat[id].toFixed(3)} [${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real]; generation ${st.generation}`);
+      await journal(sp.id, "promote", id, `new champion: P(better than ${champion.arm_id})=${dec.pbeat[id].toFixed(3)}, expected loss ${((dec.loss?.[id] ?? 0) * 100).toFixed(2)} pts [${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real]; generation ${st.generation}`);
       if (winner.issue) await closeIssue(repoSlug, winner.issue, `Shipped: mutant \`${winner.arm_id}\` implemented this and became the champion.`).catch(() => {});
       newChampion = winner.arm_id;
     }
@@ -669,7 +669,7 @@ async function cycle(sp) {
 
 /** The two most promising PR mutants (by P(beats champion)) that have not been crossed with each other yet. */
 async function crossoverPair(sp, arms, champion, real, weekly) {
-  const sel = { ...NURSERY_DEFAULTS, ...(cfg.nursery ?? {}) };
+  const sel = { ...NURSERY_DEFAULTS, ...cfg.selection, ...(cfg.nursery ?? {}) };
   const pool = arms.filter((a) => (a.status === "live" || a.status === "nursery") && a.prs && a.git_ref);
   if (pool.length < 2 || !champion) return null;
   const d = decideNursery({ arms: [champion, ...pool], real, sims: await simStatsFor(db, sp.id), weeklyReal: weekly, opts: sel });
