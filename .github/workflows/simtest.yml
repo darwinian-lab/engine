@@ -1,0 +1,28 @@
+name: simtest
+on:
+  # Commit ops/simtest.json to run a few simulated sessions without breeding or selection.
+  push: { branches: [main], paths: ["ops/simtest.json"] } # {"species":"wall","sims":2}
+concurrency: { group: evolve, cancel-in-progress: false }
+permissions: { contents: write }
+jobs:
+  evolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      DW_GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+      DW_LAB_KEY: ${{ secrets.DW_LAB_KEY }}
+      GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: scripts/ci-setup.sh
+      - name: Simulated users only
+        run: node evolve/run.mjs --sim-only --species "$(jq -r .species ops/simtest.json)" --sims "$(jq -r .sims ops/simtest.json)"
+      - if: always()
+        run: scripts/ci-finish.sh
