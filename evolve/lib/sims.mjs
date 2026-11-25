@@ -6,6 +6,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { run, rid, log, extractJson } from "./util.mjs";
 import { simPrompt } from "./prompts.mjs";
+import { claudeStream } from "./stream.mjs";
 
 export class SimRateLimited extends Error {}
 
@@ -61,7 +62,7 @@ function mcpArgs(s, profileDir, device, shimFile) {
   ];
 }
 
-async function agent(cfg, prompt, profileDir, device, workDir) {
+async function agent(cfg, prompt, profileDir, device, workDir, label = "sim") {
   const s = cfg.sims;
   const shimFile = path.join(workDir, "browser-shims.js");
   if (!fs.existsSync(shimFile)) fs.writeFileSync(shimFile, BROWSER_SHIMS);
@@ -72,15 +73,15 @@ async function agent(cfg, prompt, profileDir, device, workDir) {
     const out = path.join(workDir, `codex-${rid(6)}.txt`);
     cmd = ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only",
       "-c", `mcp_servers.browser.command=${JSON.stringify(s.mcpCommand ?? "playwright-mcp")}`, "-c", `mcp_servers.browser.args=${toml}`, "-o", out, prompt];
-    const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * 60_000, agent: true });
+    const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * 60_000, agent: true, echoPrefix: `[${label} codex]` });
     const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : r.out;
     return { ...r, text };
   }
   const mcpFile = path.join(workDir, `mcp-${rid(6)}.json`);
   fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: { browser: { command: s.mcpCommand ?? "playwright-mcp", args } } }));
-  cmd = ["claude", "-p", prompt, "--model", s.model ?? "haiku", "--mcp-config", mcpFile, "--strict-mcp-config",
-    "--allowedTools", "mcp__browser", "--max-turns", String(s.maxTurns ?? 45), "--output-format", "text"];
-  const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * 60_000, agent: true });
+  const cargs = ["-p", prompt, "--model", s.model ?? "haiku", "--mcp-config", mcpFile, "--strict-mcp-config",
+    "--allowedTools", "mcp__browser", "--max-turns", String(s.maxTurns ?? 45)];
+  const r = await claudeStream({ args: cargs, cwd: workDir, label, timeoutMs: (s.phaseMinutes ?? 10) * 60_000, transcriptDir: path.join(cfg.workdir, ".tmp", "transcripts") });
   return { ...r, text: r.out };
 }
 
@@ -119,7 +120,7 @@ export async function runSession({ cfg, db, sp, stageEvent, arm, persona }) {
         received: ph.actor ? lastShare : "",
         budget: s.actionsPerPhase ?? 25,
       });
-      const r = await agent(cfg, prompt, profileDir, device, base);
+      const r = await agent(cfg, prompt, profileDir, device, base, `${sp.id} sim ${persona.id}@${arm.arm_id} ${i + 1}/${persona.phases.length}`);
       if (r.code !== 0 && /usage limit|rate.?limit|limit reached|quota|credit balance/i.test(r.out + r.err)) {
         throw new SimRateLimited((r.out + r.err).slice(-300));
       }

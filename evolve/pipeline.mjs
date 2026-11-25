@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { run, must, rid, log, extractJson } from "./lib/util.mjs";
+import { claudeStream } from "./lib/stream.mjs";
 import { gate } from "./lib/gates.mjs";
 import { hypothesisPrompt, buildPrompt, prReviewPrompt, addressPrompt, auditPrompt, repairPrompt, lessonsPrompt } from "./lib/prompts.mjs";
 import { mutationSize } from "./lib/select.mjs";
@@ -17,11 +18,11 @@ export function makePipeline(d) {
   const gh = (args, opts = {}) => run("gh", args, { timeoutMs: 120_000, ...opts });
 
   /** A Claude Code agent with no secrets in its environment. */
-  async function agent({ cwd, prompt, model, tools, browser = false, web = false, minutes = 30, json = false }) {
+  async function agent({ cwd, prompt, model, tools, browser = false, web = false, minutes = 30, json = false, label = "agent" }) {
     fs.mkdirSync(path.join(cwd, ".dw"), { recursive: true });
     const promptFile = path.join(cwd, ".dw", `prompt-${rid(6)}.md`);
     fs.writeFileSync(promptFile, prompt);
-    const args = ["-p", `Read the file ${promptFile} and carry out the instructions in it exactly. Work autonomously until done.`, "--model", model, "--permission-mode", "acceptEdits", "--output-format", "text"];
+    const args = ["-p", `Read the file ${promptFile} and carry out the instructions in it exactly. Work autonomously until done.`, "--model", model, "--permission-mode", "acceptEdits"];
     const allowed = [...tools];
     if (browser) {
       const mcp = path.join(cwd, ".dw", `mcp-${rid(6)}.json`);
@@ -33,7 +34,7 @@ export function makePipeline(d) {
     if (web) allowed.push(...DOC_DOMAINS.map((dom) => `WebFetch(domain:${dom})`));
     args.push("--allowedTools", allowed.join(","), "--disallowedTools", "Bash(git push:*),Bash(git remote:*),Bash(curl:*),Bash(wget:*)");
     // Each agent gets its own local dev-server port so parallel builders don't collide.
-    const r = await run("claude", args, { cwd, timeoutMs: minutes * 60_000, agent: true, env: { DW_DEV_PORT: String(8800 + Math.floor(Math.random() * 900)) } });
+    const r = await claudeStream({ args, cwd, label, timeoutMs: minutes * 60_000, transcriptDir: path.join(cfg.workdir, ".tmp", "transcripts"), env: { DW_DEV_PORT: String(8800 + Math.floor(Math.random() * 900)) } });
     const text = r.out + r.err;
     if (r.code !== 0 && /rate.?limit|usage limit|limit reached|quota/i.test(text)) throw new RateLimited(text.slice(-500));
     return json ? extractJson(r.out) : r;
@@ -70,7 +71,7 @@ export function makePipeline(d) {
       fs.appendFileSync(path.join(repo, ".git", "info", "exclude"), "\n.dw/\nnode_modules\n.wrangler/\n");
 
       // 1. Hypothesis: what to build and why.
-      const hyp = await agent({ cwd: wt, prompt: hypothesisPrompt({ ...ctx.promptCtx, size }), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 15, json: true });
+      const hyp = await agent({ label: `${sp.id}/${armId} hypothesis`, cwd: wt, prompt: hypothesisPrompt({ ...ctx.promptCtx, size }), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 15, json: true });
       if (!hyp?.work_item) {
         await journal(sp.id, "reject", armId, "hypothesis step produced no work item");
         return null;
@@ -80,9 +81,10 @@ export function makePipeline(d) {
       const workItemFile = path.join(runDir, "work-item.md");
       fs.writeFileSync(workItemFile, workItem);
       ghNotice(`${sp.id} ${armId} hypothesis`, `${hyp.title}: ${hyp.hypothesis}`);
+      await journal(sp.id, "progress", armId, `hypothesis chosen: ${hyp.title}. ${hyp.hypothesis}${hyp.implements_issue ? ` (implements #${hyp.implements_issue})` : ""}; building it now`);
 
       // 2. Build with evolve-to-prs.
-      await agent({ cwd: wt, prompt: buildPrompt({ workItemFile, baseSha, prefix, runDir }), model: cfg.models.mutate ?? "opus", tools: [...CODE_TOOLS, "Task", "TodoWrite"], browser: true, web: true, minutes: cfg.timeouts?.buildMin ?? 150 });
+      await agent({ label: `${sp.id}/${armId} build`, cwd: wt, prompt: buildPrompt({ workItemFile, baseSha, prefix, runDir }), model: cfg.models.mutate ?? "opus", tools: [...CODE_TOOLS, "Task", "TodoWrite"], browser: true, web: true, minutes: cfg.timeouts?.buildMin ?? 150 });
       const result = JSON.parse(fs.existsSync(path.join(runDir, "result.json")) ? fs.readFileSync(path.join(runDir, "result.json"), "utf8") : '{"parts":[]}');
       const mutationText = `${workItem}\n## Built\n${result.summary ?? ""}`;
       if (!result.parts?.length) {
@@ -90,13 +92,14 @@ export function makePipeline(d) {
         await stillborn(sp, armId, parent, st, `the builders produced no PR: ${String(result.summary ?? "no result").slice(0, 500)}`, { mutation: mutationText, size, revivedFrom: ctx.revival?.root });
         return null;
       }
+      await journal(sp.id, "progress", armId, `built in ${result.phases ?? "?"} phase(s) as ${result.parts.length} PR part(s); running checks`);
       const top = result.parts.at(-1);
       await must("git", ["checkout", "-q", top.branch], { cwd: wt });
 
       // 3. Viability gates on the top head (protected files, tests, typecheck, build, end-to-end).
       let g = await gate(wt, baseSha, species, { requireMutationFile: false });
       for (let i = 1; !g.ok && g.changes.length && i <= (cfg.repairRounds ?? 3); i++) {
-        await agent({ cwd: wt, prompt: `${repairPrompt(g.failure)}\n\nAdd focused commits on top of the current branch; do not rewrite existing commits.`, model: cfg.models.repair ?? "sonnet", tools: CODE_TOOLS, browser: true, minutes: 30 });
+        await agent({ label: `${sp.id}/${armId} repair`, cwd: wt, prompt: `${repairPrompt(g.failure)}\n\nAdd focused commits on top of the current branch; do not rewrite existing commits.`, model: cfg.models.repair ?? "sonnet", tools: CODE_TOOLS, browser: true, minutes: 30 });
         await run("git", ["add", "-A"], { cwd: wt });
         await run("git", [...GIT_ID, "commit", "-q", "-m", "Fix failing checks"], { cwd: wt });
         g = await gate(wt, baseSha, species, { requireMutationFile: false });
@@ -123,6 +126,7 @@ export function makePipeline(d) {
         prs.push({ number: Number(url.split("/pull/")[1]), url, branch: part.branch, base, head, title: part.title ?? hyp.title });
       }
       const topPr = prs.at(-1);
+      await journal(sp.id, "progress", armId, `opened ${prs.map((p) => p.url).join(", ")}; automated review starting`);
       const prBodies = prs.map((p, i) => `### PR ${i + 1}: ${p.title}\n${fs.readFileSync(path.join(runDir, `pr-body-${i + 1}.md`), "utf8")}`).join("\n\n");
 
       // 5. Automated PR review: Codex (charter) + a fresh Claude reviewer, feedback commits, up to N rounds.
@@ -134,7 +138,7 @@ export function makePipeline(d) {
         const headSha = (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim();
         const diff = (await run("git", ["diff", `${baseSha}...${headSha}`], { cwd: wt })).out;
         const audit = await codex(auditPrompt({ charter: fs.readFileSync(path.join(wt, "CHARTER.md"), "utf8"), diff, mutation: workItem }), "audit");
-        const review = await agent({ cwd: wt, prompt: prReviewPrompt({ workItem, baseSha, headSha, prBodies, history: history.join("\n\n") }), model: cfg.models.review ?? "opus", tools: [...READ_TOOLS, "Bash(npm:*)", "Bash(npx:*)", "Bash(node:*)"], browser: true, minutes: 30, json: true });
+        const review = await agent({ label: `${sp.id}/${armId} review r${round}`, cwd: wt, prompt: prReviewPrompt({ workItem, baseSha, headSha, prBodies, history: history.join("\n\n") }), model: cfg.models.review ?? "opus", tools: [...READ_TOOLS, "Bash(npm:*)", "Bash(npx:*)", "Bash(node:*)"], browser: true, minutes: 30, json: true });
         const findings = [
           ...((audit?.verdict === "pass" ? [] : audit?.violations ?? ["auditor unavailable"]).map((v, i) => ({ id: `A${round}.${i + 1}`, blocking: true, severity: "high", problem: v, fix: "", source: "charter audit" }))),
           ...((review?.findings ?? []).map((f, i) => ({ ...f, id: `R${round}.${i + 1}`, source: "code review" }))),
@@ -145,18 +149,19 @@ export function makePipeline(d) {
         const reviewBody = `### Automated review, round ${round}\n\n**Charter audit (Codex):** ${audit?.verdict === "pass" ? "pass" : "changes needed"}${audit?.summary ? `. ${audit.summary}` : ""}\n\n**Code review:** ${review?.verdict ?? "no verdict"}${review?.summary ? `. ${review.summary}` : ""}\n\n${findings.length ? findings.map((f) => `- **${f.id}** ${f.blocking ? "(blocking)" : "(non-blocking)"} ${f.file ? `\`${f.file}${f.line ? ":" + f.line : ""}\` ` : ""}${f.problem}${f.fix ? `\n  Fix: ${f.fix}` : ""}`).join("\n") : "No findings."}`;
         await gh(["pr", "comment", String(topPr.number), "-R", repoSlug, "--body", reviewBody.slice(0, 60000)]);
         history.push(reviewBody);
+        await journal(sp.id, "progress", armId, `review round ${round}: ${blocking.length ? `${blocking.length} blocking finding(s)` : "approved"}`);
         if (!blocking.length) {
           approved = true;
           break;
         }
         if (round > rounds) break;
         ghNotice(`${sp.id} ${armId} review round ${round}`, blocking.map((f) => f.problem).join(" | ").slice(0, 1500));
-        const disp = await agent({ cwd: wt, prompt: addressPrompt({ findings, round }), model: cfg.models.address ?? "opus", tools: CODE_TOOLS, browser: true, web: true, minutes: 45, json: true });
+        const disp = await agent({ label: `${sp.id}/${armId} address r${round}`, cwd: wt, prompt: addressPrompt({ findings, round }), model: cfg.models.address ?? "opus", tools: CODE_TOOLS, browser: true, web: true, minutes: 45, json: true });
         await run("git", ["add", "-A"], { cwd: wt });
         await run("git", [...GIT_ID, "commit", "-q", "-m", `Address review round ${round}`], { cwd: wt });
         g = await gate(wt, baseSha, species, { requireMutationFile: false });
         for (let i = 1; !g.ok && i <= (cfg.repairRounds ?? 3); i++) {
-          await agent({ cwd: wt, prompt: `${repairPrompt(g.failure)}\n\nAdd focused commits on top; do not rewrite existing commits.`, model: cfg.models.repair ?? "sonnet", tools: CODE_TOOLS, minutes: 30 });
+          await agent({ label: `${sp.id}/${armId} repair`, cwd: wt, prompt: `${repairPrompt(g.failure)}\n\nAdd focused commits on top; do not rewrite existing commits.`, model: cfg.models.repair ?? "sonnet", tools: CODE_TOOLS, minutes: 30 });
           await run("git", ["add", "-A"], { cwd: wt });
           await run("git", [...GIT_ID, "commit", "-q", "-m", "Fix failing checks"], { cwd: wt });
           g = await gate(wt, baseSha, species, { requireMutationFile: false });
@@ -254,7 +259,7 @@ export function makePipeline(d) {
       const parentBase = (await must("git", ["merge-base", winner.git_ref, "origin/main"], { cwd: repo })).trim();
       let rb = await run("git", [...GIT_ID, "rebase", "--onto", "origin/main", parentBase, branch], { cwd: wt });
       if (rb.code !== 0) {
-        await agent({ cwd: wt, prompt: `A rebase of this branch onto main stopped with conflicts. Resolve every conflict so that BOTH main's behaviour and this branch's change are preserved, run \`git add\` and \`git -c user.name=darwinian -c user.email=evolve@darwinian.local rebase --continue\` until the rebase completes, then run npm test, npm run typecheck and npm run e2e and fix anything broken with focused commits. Never modify protected files.`, model: cfg.models.repair ?? "sonnet", tools: CODE_TOOLS, minutes: 40 });
+        await agent({ label: `${sp.id}/${finalist} resolve conflicts`, cwd: wt, prompt: `A rebase of this branch onto main stopped with conflicts. Resolve every conflict so that BOTH main's behaviour and this branch's change are preserved, run \`git add\` and \`git -c user.name=darwinian -c user.email=evolve@darwinian.local rebase --continue\` until the rebase completes, then run npm test, npm run typecheck and npm run e2e and fix anything broken with focused commits. Never modify protected files.`, model: cfg.models.repair ?? "sonnet", tools: CODE_TOOLS, minutes: 40 });
         if ((await run("git", ["status"], { cwd: wt })).out.includes("rebase in progress")) {
           await run("git", ["rebase", "--abort"], { cwd: wt });
           return "failed";
@@ -295,7 +300,7 @@ export function makePipeline(d) {
     await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
     const file = path.join(repo, "LESSONS.md");
     const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "# LESSONS.md\n";
-    const r = await run("claude", ["-p", lessonsPrompt({ product: species.brand.name, current, items }), "--model", cfg.models.curate ?? "sonnet", "--output-format", "text"], { cwd: repo, timeoutMs: 10 * 60_000, agent: true });
+    const r = await run("claude", ["-p", lessonsPrompt({ product: species.brand.name, current, items }), "--model", cfg.models.curate ?? "sonnet", "--output-format", "text"], { cwd: repo, timeoutMs: 10 * 60_000, agent: true, echoPrefix: `[${sp.id} lessons]` });
     const next = r.out.replace(/^```(?:markdown)?\n|\n```\s*$/g, "").trim();
     if (r.code !== 0 || !next.startsWith("# LESSONS.md")) return;
     fs.writeFileSync(file, next + "\n");

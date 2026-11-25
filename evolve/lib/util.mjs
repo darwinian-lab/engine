@@ -13,9 +13,32 @@ export function agentEnv(extra = {}) {
   return { ...env, ...extra };
 }
 
-export function run(cmd, args, { cwd, timeoutMs = 10 * 60_000, input, env, agent = false } = {}) {
+/** Writes a line to the CI log, prefixed so interleaved agents stay readable. */
+export function echo(prefix, line) {
+  for (const l of String(line).split("\n")) if (l.trim()) process.stdout.write(`${prefix} ${l}\n`);
+}
+
+export function run(cmd, args, { cwd, timeoutMs = 10 * 60_000, input, env, agent = false, onLine, echoPrefix } = {}) {
   return new Promise((resolve) => {
     const p = spawn(cmd, args, { cwd, env: agent ? agentEnv(env) : { ...process.env, ...env }, stdio: ["pipe", "pipe", "pipe"] });
+    // Optional live streaming: every output line goes to onLine (and/or straight to the CI log) as it arrives.
+    if (onLine || echoPrefix) {
+      const buf = { stdout: "", stderr: "" };
+      for (const name of ["stdout", "stderr"]) {
+        p[name].on("data", (d) => {
+          buf[name] += d;
+          const lines = buf[name].split("\n");
+          buf[name] = lines.pop();
+          for (const l of lines) {
+            if (onLine) onLine(l, name);
+            else echo(echoPrefix, l);
+          }
+        });
+        p[name].on("end", () => {
+          if (buf[name]) (onLine ? onLine(buf[name], name) : echo(echoPrefix, buf[name]));
+        });
+      }
+    }
     let out = "";
     let err = "";
     const t = setTimeout(() => {

@@ -784,7 +784,7 @@ const KIND = {
   spawn: ["Born", "var(--st-live)"], reject: ["Stillborn", "var(--st-stillborn)"], promote: ["Promoted", "var(--st-champion)"],
   retire: ["Retired", "var(--ink-2)"], death: ["Died", "var(--st-dead)"], stage: ["New stage", "var(--st-control)"],
   probe: ["AI probe", "var(--st-control)"], sims: ["Simulations", "var(--st-nursery)"], graduate: ["Graduated", "var(--st-live)"],
-  revive: ["Revived", "var(--st-champion)"], ideation: ["Ideas", "var(--st-nursery)"], finalist: ["Finalist", "var(--st-champion)"], indexnow: ["Indexing", "var(--ink-3)"], note: ["Note", "var(--ink-2)"], reminder: ["Reminder", "var(--st-champion)"],
+  revive: ["Revived", "var(--st-champion)"], ideation: ["Ideas", "var(--st-nursery)"], finalist: ["Finalist", "var(--st-champion)"], progress: ["Building", "var(--st-nursery)"], indexnow: ["Indexing", "var(--ink-3)"], note: ["Note", "var(--ink-2)"], reminder: ["Reminder", "var(--st-champion)"],
 };
 function drawJournal() {
   const kinds = ["all", ...Object.keys(KIND).filter((k) => D.journal.some((j) => j.kind === k))];

@@ -38,3 +38,10 @@ jobs:
           node evolve/run.mjs $ARGS
       - if: always()
         run: scripts/ci-finish.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-transcripts-${{ github.run_id }}
+          path: ${{ env.DW_WORKDIR }}/.tmp/transcripts/
+          if-no-files-found: ignore
+          retention-days: 30

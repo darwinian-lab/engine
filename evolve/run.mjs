@@ -83,7 +83,7 @@ async function claude(wt, promptText, model) {
     prompt: "Read the file .dw/prompt.md and carry out the instructions in it exactly. Work autonomously until done.",
     model,
   });
-  const r = await run(cmd[0], cmd.slice(1), { cwd: wt, timeoutMs: (cfg.timeouts?.mutateMin ?? 40) * 60_000, agent: true });
+  const r = await run(cmd[0], cmd.slice(1), { cwd: wt, timeoutMs: (cfg.timeouts?.mutateMin ?? 40) * 60_000, agent: true, echoPrefix: `[${path.basename(wt)} claude]` });
   const text = r.out + r.err;
   if (/rate.?limit|usage limit|limit reached|quota/i.test(text) && r.code !== 0) throw new RateLimited(text.slice(-500));
   return r;
@@ -98,7 +98,7 @@ async function codexRaw(promptText, tag) {
   const promptFile = out.replace(/\.txt$/, ".prompt.md");
   fs.writeFileSync(promptFile, promptText);
   const cmd = expand(cfg.commands.codex, { out, prompt: `Read ${promptFile} and answer exactly as it asks. Do not modify any files.` });
-  const r = await run(cmd[0], cmd.slice(1), { cwd: path.dirname(out), timeoutMs: 15 * 60_000, agent: true });
+  const r = await run(cmd[0], cmd.slice(1), { cwd: path.dirname(out), timeoutMs: 15 * 60_000, agent: true, echoPrefix: `[codex ${tag}]` });
   const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : r.out;
   fs.rmSync(promptFile, { force: true });
   fs.rmSync(out, { force: true });
@@ -397,7 +397,7 @@ async function probe(sp, species) {
   fs.mkdirSync(dir, { recursive: true });
   const prompt = `Search the web as a normal user would for: "${q}". Based on what you find, list the 5 websites you would recommend to that user, most recommended first. Then answer ONLY with JSON: {"recommended":["domain1",...],"mentions_${sp.domain.replace(/\W/g, "_")}":true|false}`;
   const cmd = expand(cfg.commands.probe ?? ["claude", "-p", "{prompt}", "--model", "sonnet", "--allowedTools", "WebSearch,WebFetch", "--output-format", "text"], { prompt });
-  const r = await run(cmd[0], cmd.slice(1), { cwd: dir, timeoutMs: 8 * 60_000, agent: true });
+  const r = await run(cmd[0], cmd.slice(1), { cwd: dir, timeoutMs: 8 * 60_000, agent: true, echoPrefix: `[${sp.id} ai-search probe]` });
   const j = extractJson(r.out);
   if (!j) return;
   const found = (j.recommended ?? []).some((d) => String(d).includes(sp.domain));
@@ -634,7 +634,7 @@ async function cycle(sp) {
 /** Sonnet turns simulated feedback into backlog actions. */
 async function curate(product, issues, feedback) {
   const dir = path.join(cfg.workdir, ".tmp");
-  const r = await run("claude", ["-p", curatorPrompt({ product, issues, feedback }), "--model", cfg.models.curate ?? "sonnet", "--output-format", "text"], { cwd: dir, timeoutMs: 5 * 60_000, agent: true });
+  const r = await run("claude", ["-p", curatorPrompt({ product, issues, feedback }), "--model", cfg.models.curate ?? "sonnet", "--output-format", "text"], { cwd: dir, timeoutMs: 5 * 60_000, agent: true, echoPrefix: "[backlog curator]" });
   return extractJson(r.out);
 }
 
@@ -645,7 +645,7 @@ async function ideate(sp, species, brief, repoSlug, issues, champion) {
   const pages = (await Promise.all((sp.screenPages ?? ["/"]).map((p) => fetchText(champion.origin, p)))).join("\n");
   const probes = (await db.all("SELECT detail FROM journal WHERE species=? AND kind='probe' ORDER BY ts DESC LIMIT 4", [sp.id])).map((p) => p.detail).join("\n");
   const dir = path.join(cfg.workdir, ".tmp");
-  const r = await run("claude", ["-p", ideationPrompt({ product: species.brand.name, brief, pages, issues, probes }), "--model", cfg.models.ideate ?? "sonnet", "--allowedTools", "WebSearch,WebFetch", "--output-format", "text"], { cwd: dir, timeoutMs: 10 * 60_000, agent: true });
+  const r = await run("claude", ["-p", ideationPrompt({ product: species.brand.name, brief, pages, issues, probes }), "--model", cfg.models.ideate ?? "sonnet", "--allowedTools", "WebSearch,WebFetch", "--output-format", "text"], { cwd: dir, timeoutMs: 10 * 60_000, agent: true, echoPrefix: `[${sp.id} ideation]` });
   const j = extractJson(r.out);
   const ideas = (j?.ideas ?? []).slice(0, 2);
   for (const idea of ideas) await createIssue(repoSlug, { title: idea.title, body: `${idea.body}\n\n_Proposed by the Darwinian ideation agent._`, label: "from:ideation" }).catch((e) => log(`ideation issue failed: ${e.message}`));
