@@ -25,3 +25,10 @@ CREATE TABLE IF NOT EXISTS sim_runs (
   report      TEXT                  -- JSON {summary, phases:[...], stuck, wishes, liked, quote}
 );
 CREATE INDEX IF NOT EXISTS idx_sim_arm ON sim_runs (species, arm_id, ts);
+
+-- Latest view of each species' backlog (GitHub issues), written by the evolve loop for the lab.
+CREATE TABLE IF NOT EXISTS backlog (
+  species     TEXT PRIMARY KEY,
+  json        TEXT NOT NULL,
+  updated_at  INTEGER NOT NULL
+);

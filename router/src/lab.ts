@@ -101,7 +101,7 @@ export async function snapshot(env: Env, sp: string) {
   const since30 = Date.now() - 30 * DAY;
   const q = (sql: string, ...b: unknown[]) => env.DB.prepare(sql).bind(...b).all<any>().then((r) => r.results);
   const safe = <T>(p: Promise<T>, fallback: T) => p.catch(() => fallback); // tables may not exist yet
-  const [configs, state, arms, stats, journal, mediaRows, pbHistory] = await Promise.all([
+  const [configs, state, arms, stats, journal, mediaRows, pbHistory, simRows, backlogRow] = await Promise.all([
     q("SELECT species, json FROM species_config"),
     env.DB.prepare("SELECT * FROM species_state WHERE species = ?").bind(sp).first<any>(),
     q("SELECT * FROM arms WHERE species = ? ORDER BY created_at", sp),
@@ -109,6 +109,8 @@ export async function snapshot(env: Env, sp: string) {
     q("SELECT ts, kind, arm_id, detail FROM journal WHERE species = ? OR species IS NULL ORDER BY ts DESC LIMIT 300", sp),
     safe(q("SELECT id, arm_id, kind, page, viewport, width, height, size, created_at FROM media WHERE species = ? ORDER BY id", sp), []),
     safe(q("SELECT ts, arm_id, pbest, trials, successes FROM pb_history WHERE species = ? AND ts > ? ORDER BY ts", sp, Date.now() - 60 * DAY), []),
+    safe(q("SELECT id, ts, arm_id, persona, device, outcome, stage_hit, done, rating, minutes, report FROM sim_runs WHERE species = ? AND ts > ? ORDER BY ts DESC LIMIT 400", sp, Date.now() - 30 * DAY), []),
+    safe(env.DB.prepare("SELECT json, updated_at FROM backlog WHERE species = ?").bind(sp).first<any>(), null),
   ]);
   const cfg = parse(configs.find((c: any) => c.species === sp)?.json) ?? {};
   const stageIdx = state?.stage ?? 0;
@@ -125,8 +127,27 @@ export async function snapshot(env: Env, sp: string) {
     ),
   ]);
 
-  const competing = arms.filter((a: any) => a.status === "live" || a.status === "champion").map((a: any) => a.arm_id);
-  const pb = probBest(competing, stats as ArmStat[]);
+  // Selection evidence = real visitors + simulated sessions (as the evolve loop weighs them, weight 1 until real traffic grows).
+  const since14 = Date.now() - 14 * DAY;
+  const simAgg: Record<string, { trials: number; successes: number; rated: number; ratingSum: number }> = {};
+  for (const r of simRows as any[]) {
+    if (r.outcome === "error") continue;
+    const a = (simAgg[r.arm_id] ??= { trials: 0, successes: 0, rated: 0, ratingSum: 0 });
+    if (r.ts > since14) {
+      a.trials++;
+      if (r.outcome === "success") a.successes++;
+    }
+    if (r.rating) { a.rated++; a.ratingSum += r.rating; }
+  }
+  const weeklyReal = (visitors as any[]).filter((v) => v.d * DAY > Date.now() - 7 * DAY).reduce((n, v) => n + v.n, 0);
+  const lambda = 1 / (1 + weeklyReal / 50);
+  const competing = arms.filter((a: any) => ["live", "champion", "nursery"].includes(a.status)).map((a: any) => a.arm_id);
+  const combinedStats: ArmStat[] = competing.map((id: string) => {
+    const r = (stats as any[]).find((s) => s.arm_id === id && s.segment === "all") ?? { trials: 0, successes: 0 };
+    const m = simAgg[id] ?? { trials: 0, successes: 0 };
+    return { arm_id: id, segment: "all", trials: r.trials + lambda * m.trials, successes: r.successes + lambda * m.successes };
+  });
+  const pb = probBest(competing, combinedStats);
 
   const byArm: Record<string, Record<string, any>> = {};
   for (const s of stats) (byArm[s.arm_id] ??= {})[s.segment] = { trials: s.trials, successes: s.successes, revenue: s.revenue, requests: s.requests, errors: s.errors };
@@ -145,6 +166,16 @@ export async function snapshot(env: Env, sp: string) {
       stage: stageIdx,
       stages: (cfg.stages ?? []).map((s: any) => ({ name: s.name, event: s.event, describe: s.describe ?? null })),
     },
+    simWeight: lambda,
+    sims: Object.fromEntries(Object.entries(simAgg).map(([k, v]) => [k, { trials: v.trials, successes: v.successes, rating: v.rated ? v.ratingSum / v.rated : null }])),
+    simRuns: (simRows as any[]).slice(0, 200).map((r) => {
+      const rep = parse(r.report) ?? {};
+      return {
+        id: r.id, ts: r.ts, arm_id: r.arm_id, persona: r.persona, device: r.device, outcome: r.outcome, stage_hit: r.stage_hit, done: r.done, rating: r.rating, minutes: r.minutes,
+        phases: (rep.phases ?? []).map((p: any) => ({ label: p.label, actor: p.actor, device: p.device, done: p.done, gave_up: p.gave_up, rating: p.rating, summary: p.summary, stuck: (p.stuck ?? []).slice(0, 5), wishes: (p.wishes ?? []).slice(0, 5), liked: (p.liked ?? []).slice(0, 3) })),
+      };
+    }),
+    backlog: backlogRow ? { updated_at: backlogRow.updated_at, issues: parse(backlogRow.json) ?? [] } : null,
     arms: arms.map((a: any) => ({
       arm_id: a.arm_id,
       status: a.status,
@@ -160,6 +191,10 @@ export async function snapshot(env: Env, sp: string) {
       created_at: a.created_at,
       retired_at: a.retired_at,
       cause: a.cause,
+      revived_from: a.revived_from ?? null,
+      issue: a.issue ?? null,
+      graduated_at: a.graduated_at ?? null,
+      final_score: a.final_score ?? null,
     })),
     stats: byArm,
     pb,

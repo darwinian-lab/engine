@@ -431,6 +431,8 @@ async function cycle(sp) {
       for (const w of wanted) if (!all.some((i) => i.title === w.title)) await createIssue(repoSlug, { title: w.title, body: w.body });
     }
     issues = await listIssues(repoSlug);
+    await db.run("INSERT INTO backlog (species, json, updated_at) VALUES (?,?,?) ON CONFLICT(species) DO UPDATE SET json=excluded.json, updated_at=excluded.updated_at",
+      [sp.id, JSON.stringify(issues.map(({ body, ...i }) => ({ ...i, body: body.slice(0, 400) }))), now()]);
   } catch (e) {
     log(`[${sp.id}] backlog unavailable: ${e.message}`);
   }
