@@ -1,0 +1,7 @@
+[
+  {
+    "species": "wall",
+    "title": "Let me sign in instead of bookmarking a private admin link",
+    "body": "Owner request. Today a wall is managed through a private link that people must bookmark; if they lose it (new phone, cleared browser, another device) they lose their wall. Simulated users hit this too.\n\nUse the engine's accounts capability (Clerk, see BRIEF.md: `clerkHead`, `currentUser`) so people can sign in and see all their walls from any device. Keep it optional and fast: creating a wall without an account should keep working, and existing private links must keep working. Offer to attach a wall to an account (e.g. right after creating it, or from the manage page)."
+  }
+]

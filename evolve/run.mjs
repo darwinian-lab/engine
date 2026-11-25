@@ -423,6 +423,13 @@ async function cycle(sp) {
   let issues = [];
   try {
     await ensureLabels(repoSlug);
+    // Owner requests filed by commit (ops/owner-issues.json), created once.
+    const ownerFile = path.join(ENGINE_DIR, "ops", "owner-issues.json");
+    const wanted = fs.existsSync(ownerFile) ? JSON.parse(fs.readFileSync(ownerFile, "utf8")).filter((i) => i.species === sp.id) : [];
+    if (wanted.length) {
+      const all = JSON.parse((await run("gh", ["issue", "list", "-R", repoSlug, "--state", "all", "--limit", "300", "--json", "title"], { env: { GH_TOKEN: process.env.DW_GH_TOKEN ?? "" } })).out || "[]");
+      for (const w of wanted) if (!all.some((i) => i.title === w.title)) await createIssue(repoSlug, { title: w.title, body: w.body });
+    }
     issues = await listIssues(repoSlug);
   } catch (e) {
     log(`[${sp.id}] backlog unavailable: ${e.message}`);
