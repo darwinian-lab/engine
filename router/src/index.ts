@@ -13,6 +13,8 @@ export interface Env {
   SPECIES: string;
   ROUTER_KEY: string; // shared secret: mutants only serve requests carrying it
   LAB_KEY: string; // owner's read-only dashboard key
+  GH_DISPATCH_TOKEN?: string; // set on one router only: it is the experiment's clock
+  DISPATCH_REPO?: string;
 }
 
 const BOT_RE =
@@ -234,8 +236,25 @@ export default {
     return out;
   },
 
-  async scheduled(_ev: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  async scheduled(ev: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(aggregate(env));
+    // The heartbeat of evolution: every 3 hours, start one cycle in GitHub Actions.
+    const t = new Date(ev.scheduledTime);
+    if (env.GH_DISPATCH_TOKEN && t.getUTCHours() % 3 === 0 && t.getUTCMinutes() < 15) {
+      ctx.waitUntil(
+        fetch(`https://api.github.com/repos/${env.DISPATCH_REPO ?? "darwinian-lab/engine"}/actions/workflows/evolve.yml/dispatches`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
+            accept: "application/vnd.github+json",
+            "user-agent": "darwinian-clock",
+          },
+          body: JSON.stringify({ ref: "main" }),
+        }).then(async (r) => {
+          if (!r.ok) console.log("dispatch failed", r.status, await r.text());
+        }),
+      );
+    }
   },
 };
 

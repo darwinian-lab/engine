@@ -83,7 +83,10 @@ if (fill(path.join(engine, "router/wrangler.toml"), { __D1_ID__: cfg.cloudflare.
 for (const sp of cfg.species) {
   log(`deploying router for ${sp.id} on ${sp.domain}`);
   await must("npx", ["wrangler", "deploy", "--env", sp.id], { cwd: path.join(engine, "router"), env, timeoutMs: 300_000 });
-  for (const [k, v] of [["ROUTER_KEY", cfg.routerKey], ["LAB_KEY", cfg.labKey]]) {
+  const secrets = [["ROUTER_KEY", cfg.routerKey], ["LAB_KEY", cfg.labKey]];
+  // The first species' router doubles as the experiment's clock (starts an evolve run every 3 hours).
+  if (sp === cfg.species[0] && process.env.DW_GH_TOKEN) secrets.push(["GH_DISPATCH_TOKEN", process.env.DW_GH_TOKEN]);
+  for (const [k, v] of secrets) {
     await must("npx", ["wrangler", "secret", "put", k, "--env", sp.id], { cwd: path.join(engine, "router"), env, input: v });
   }
 }
