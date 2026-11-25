@@ -784,7 +784,7 @@ const KIND = {
   spawn: ["Born", "var(--st-live)"], reject: ["Stillborn", "var(--st-stillborn)"], promote: ["Promoted", "var(--st-champion)"],
   retire: ["Retired", "var(--ink-2)"], death: ["Died", "var(--st-dead)"], stage: ["New stage", "var(--st-control)"],
   probe: ["AI probe", "var(--st-control)"], sims: ["Simulations", "var(--st-nursery)"], graduate: ["Graduated", "var(--st-live)"],
-  revive: ["Revived", "var(--st-champion)"], ideation: ["Ideas", "var(--st-nursery)"], indexnow: ["Indexing", "var(--ink-3)"], note: ["Note", "var(--ink-2)"], reminder: ["Reminder", "var(--st-champion)"],
+  revive: ["Revived", "var(--st-champion)"], ideation: ["Ideas", "var(--st-nursery)"], finalist: ["Finalist", "var(--st-champion)"], indexnow: ["Indexing", "var(--ink-3)"], note: ["Note", "var(--ink-2)"], reminder: ["Reminder", "var(--st-champion)"],
 };
 function drawJournal() {
   const kinds = ["all", ...Object.keys(KIND).filter((k) => D.journal.some((j) => j.kind === k))];
@@ -863,7 +863,8 @@ function openArm(id, quiet) {
       </div>
       <div class="links">
         ${alive && visit ? `<a class="btn primary" href="${visit}" target="_blank" rel="noopener">Browse the site as this mutant</a>` : ""}
-        ${a.git_ref && a.git_ref.startsWith("fossil/") ? `<a class="btn" href="${ghBase}/commits/${encodeURIComponent(a.git_ref)}" target="_blank" rel="noopener">Commit</a>` : ""}
+        ${(a.prs || []).map((p, i, all) => `<a class="btn" href="${esc(p.url)}" target="_blank" rel="noopener">Pull request #${p.number}${all.length > 1 ? ` (${i + 1}/${all.length})` : ""}</a>`).join("")}
+        ${a.git_ref && a.git_ref.startsWith("fossil/") && !(a.prs || []).length ? `<a class="btn" href="${ghBase}/commits/${encodeURIComponent(a.git_ref)}" target="_blank" rel="noopener">Commit</a>` : ""}
         ${parent && parent.git_ref && a.git_ref && a.git_ref.startsWith("fossil/") ? `<a class="btn" href="${ghBase}/compare/${encodeURIComponent(parent.git_ref)}...${encodeURIComponent(a.git_ref)}" target="_blank" rel="noopener">Code changes vs parent</a>` : ""}
       </div>
       ${alive && visit ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">Browsing as a mutant sticks to it on that domain. <a href="https://${esc(spInfo.domain)}/_dw/lab/visit?arm=&t=${D.handoff}" target="_blank" rel="noopener">Stop previewing</a> to get a normal assignment back. Your visits are never counted.</p>` : ""}
@@ -872,6 +873,7 @@ function openArm(id, quiet) {
       <div id="viewer"></div>
       ${video ? `<h3>Scrolling through it on a phone</h3><video src="${mediaUrl(video)}" controls muted playsinline loop preload="metadata"></video>` : ""}
 
+      ${a.finalist_of ? `<div class="cause">Finalist: <button type="button" data-arm="${esc(a.finalist_of)}" class="mono" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px">${esc(a.finalist_of)}</button> won selection after main had moved on, so its change was rebased onto main. It must confirm itself here before it is merged.</div>` : ""}
       ${a.revived_from ? `<div class="cause">This is a revival of <button type="button" data-arm="${esc(a.revived_from)}" class="mono" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px">${esc(a.revived_from)}</button>, an idea that died earlier and was brought back from the seed bank.</div>` : ""}
       ${a.issue ? `<p class="muted" style="font-size:14px">Implements backlog item <a href="https://github.com/${D.repo}/issues/${a.issue}" target="_blank" rel="noopener">#${a.issue}</a>.</p>` : ""}
       ${(() => { const rs = (D.simRuns || []).filter((r) => r.arm_id === id); return rs.length ? `<h3>Simulated people who used it</h3><ul class="sims" id="armSims">${rs.slice(0, 12).map((r) => simCard(r, false)).join("")}</ul>` : ""; })()}

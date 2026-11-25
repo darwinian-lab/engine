@@ -198,6 +198,8 @@ export async function snapshot(env: Env, sp: string) {
       issue: a.issue ?? null,
       graduated_at: a.graduated_at ?? null,
       final_score: a.final_score ?? null,
+      prs: parse(a.prs),
+      finalist_of: a.finalist_of ?? null,
     })),
     stats: byArm,
     pb,
