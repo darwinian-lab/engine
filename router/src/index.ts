@@ -5,7 +5,7 @@
 import { chooseArm, bestByMean, type Arm, type ArmStat } from "./bandit";
 import { matchEvents, type SpeciesConfig } from "./config";
 import { aggregate } from "./aggregate";
-import { lab } from "./lab";
+import { lab, isOwner } from "./lab";
 import { TRACKER_JS } from "./tracker";
 
 export interface Env {
@@ -123,7 +123,7 @@ async function handleBeacon(req: Request, env: Env, ctx: ExecutionContext): Prom
   const c = cookies(req);
   const visitor = c.dw_vid;
   const armId = c.dw_arm;
-  if (!visitor || !armId || BOT_RE.test(req.headers.get("user-agent") ?? "")) {
+  if (!visitor || !armId || BOT_RE.test(req.headers.get("user-agent") ?? "") || (await isOwner(req, env))) {
     return new Response(null, { status: 204 });
   }
   let body: { n?: string; path?: string; p?: unknown } = {};
@@ -149,7 +149,7 @@ export default {
         headers: { "content-type": "application/javascript", "cache-control": "public, max-age=3600" },
       });
     }
-    if (url.pathname === "/_dw/lab") return lab(req, env);
+    if (url.pathname === "/_dw/lab" || url.pathname.startsWith("/_dw/lab/")) return lab(req, env);
     if (url.pathname === "/_dw/health") return new Response("ok");
     // IndexNow ownership proof: /<key>.txt at the root (key derived from the lab key; the evolve loop does the same).
     if (/^\/[0-9a-f]{32}\.txt$/.test(url.pathname) && env.LAB_KEY) {
@@ -222,7 +222,8 @@ export default {
         if (allowed && owner) tasks.push(creditOwner(env, name, owner, url.pathname));
       }
     }
-    if (tasks.length) ctx.waitUntil(Promise.allSettled(tasks));
+    // The owner browsing (or previewing a mutant from the lab) never counts as a visitor.
+    if (tasks.length && !(await isOwner(req, env))) ctx.waitUntil(Promise.allSettled(tasks));
 
     let out: Response = res;
     if (isHtml) {

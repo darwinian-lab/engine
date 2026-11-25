@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Darwinian lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f2f3ef;
+  --panel: #ffffff;
+  --ink: #18201c;
+  --ink-2: #56615a;
+  --ink-3: #8a948e;
+  --rule: #e0e3dd;
+  --rule-2: #eef0eb;
+  --focus: #2f62c9;
+  --st-champion: #b7791f;
+  --st-live: #2e7d57;
+  --st-control: #4467b0;
+  --st-retired: #a3aba6;
+  --st-dead: #8a3b2e;
+  --st-stillborn: #c9493b;
+  --s1: #257de0; --s2: #f47230; --s3: #00b894; --s4: #f2a600; --s5: #ee7fac; --s6: #008a17; --s7: #6a4ce2; --s8: #ec4647;
+  --s-rest: #b9c0bb;
+  --shadow: 0 1px 0 rgba(24, 32, 28, .04);
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #111513;
+    --panel: #181d1a;
+    --ink: #e5eae6;
+    --ink-2: #a0aaa4;
+    --ink-3: #6f7a74;
+    --rule: #2a312d;
+    --rule-2: #212724;
+    --focus: #7aa2f7;
+    --st-champion: #e0a63e;
+    --st-live: #4fb985;
+    --st-control: #7d9be0;
+    --st-retired: #5d6762;
+    --st-dead: #c0705f;
+    --st-stillborn: #eb6a5a;
+    --s1: #338ced; --s2: #e76624; --s3: #00a888; --s4: #d28e05; --s5: #e24d8b; --s6: #0aac23; --s7: #9887ef; --s8: #eb6263;
+    --s-rest: #4a524e;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); font-feature-settings: "tnum" 1; }
+a { color: inherit; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.mono { font-family: var(--mono); font-size: .86em; letter-spacing: -.01em; }
+.muted { color: var(--ink-2); }
+.faint { color: var(--ink-3); }
+
+.wrap { max-width: 1320px; margin: 0 auto; padding: 28px 28px 80px; }
+header.top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.brand { font-weight: 600; font-size: 14px; color: var(--ink-2); }
+.brand b { color: var(--ink); }
+.updated { font-size: 13px; color: var(--ink-3); display: flex; gap: 12px; align-items: baseline; }
+.updated button { background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; }
+
+nav.species { display: flex; flex-wrap: wrap; gap: 4px 28px; margin: 18px 0 10px; }
+nav.species a { text-decoration: none; font-size: clamp(30px, 4.4vw, 54px); font-weight: 600; letter-spacing: -.025em; line-height: 1.05; color: var(--ink-3); transition: color .15s; }
+nav.species a:hover { color: var(--ink-2); }
+nav.species a[aria-current="page"] { color: var(--ink); }
+.domain { font-size: 14px; color: var(--ink-2); margin-bottom: 6px; }
+.domain a { text-underline-offset: 3px; }
+.summary { font-size: 19px; line-height: 1.45; max-width: 68ch; margin: 10px 0 0; text-wrap: pretty; }
+
+section.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 22px 24px 24px; box-shadow: var(--shadow); min-width: 0; }
+section.panel h2 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: -.01em; }
+section.panel .sub { font-size: 13.5px; color: var(--ink-2); margin: 2px 0 14px; max-width: 72ch; }
+.grid { display: grid; gap: 18px; margin-top: 18px; }
+.grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) { .grid.two { grid-template-columns: minmax(0, 1fr); } .wrap { padding: 20px 14px 60px; } section.panel { padding: 18px 16px; } }
+
+/* Lineage */
+.lineage { margin-top: 26px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); margin: 0 0 10px; align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend svg { overflow: visible; }
+.scroll-x { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; margin: 0 -6px; padding: 0 6px; }
+.tree text { font-family: var(--sans); }
+.tree .lane-hit { fill: transparent; cursor: pointer; }
+.tree .lane-hit:hover, .tree .lane-hit.sel { fill: var(--rule-2); }
+.tree .stillborn-hit { cursor: pointer; }
+.axis text { fill: var(--ink-3); font-size: 11.5px; }
+.axis line { stroke: var(--rule); }
+
+/* Charts */
+.chart { width: 100%; display: block; overflow: visible; }
+.chart text { font-family: var(--sans); font-size: 12px; fill: var(--ink-2); }
+.chart .grid-line { stroke: var(--rule-2); }
+.chart .base { stroke: var(--rule); }
+.empty { color: var(--ink-3); font-size: 14px; padding: 18px 0; }
+.legend-row { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--ink-2); margin-bottom: 8px; }
+.legend-row i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+#tip { position: fixed; z-index: 50; pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--rule); border-radius: 10px; padding: 9px 11px; font-size: 13px; line-height: 1.4; box-shadow: 0 6px 24px rgba(0,0,0,.12); max-width: 320px; opacity: 0; transition: opacity .08s; }
+#tip.on { opacity: 1; }
+#tip .t-h { font-weight: 600; margin-bottom: 2px; }
+#tip .t-row { display: flex; justify-content: space-between; gap: 14px; color: var(--ink-2); }
+#tip .t-row b { color: var(--ink); font-weight: 500; }
+
+/* Probes */
+.probes { list-style: none; margin: 0; padding: 0; }
+.probes li { padding: 10px 0; border-top: 1px solid var(--rule-2); font-size: 14px; }
+.probes li:first-child { border-top: 0; }
+.probes .q { font-weight: 500; }
+.probes .r { font-size: 13px; color: var(--ink-2); }
+.pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+
+/* Specimens */
+.specimens { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 42vw), 1fr)); gap: 16px; }
+.spec { text-align: left; background: none; border: 0; padding: 0; cursor: pointer; display: block; }
+.spec .frame { aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; border: 1px solid var(--rule); background: var(--rule-2); position: relative; }
+.spec img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; transition: transform .25s; }
+.spec:hover img { transform: scale(1.02); }
+.spec .nophoto { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px; font-size: 13px; color: var(--ink-3); }
+.spec .meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; }
+.spec .ttl { font-size: 13.5px; color: var(--ink-2); line-height: 1.35; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.spec.dim .frame { opacity: .72; }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 500; }
+
+/* Journal */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.chip { border: 1px solid var(--rule); background: var(--panel); border-radius: 999px; padding: 3px 11px; font-size: 13px; cursor: pointer; color: var(--ink-2); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.journal { list-style: none; margin: 0; padding: 0; }
+.journal li { display: grid; grid-template-columns: 116px 84px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-top: 1px solid var(--rule-2); font-size: 13.5px; align-items: baseline; }
+.journal li:first-child { border-top: 0; }
+.journal .when { color: var(--ink-3); font-size: 12.5px; }
+.journal .kind { font-weight: 600; font-size: 12.5px; }
+.journal .det { overflow-wrap: anywhere; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.journal .det.open { -webkit-line-clamp: unset; }
+.journal .det a { color: var(--ink); }
+.more { margin-top: 10px; background: none; border: 1px solid var(--rule); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+@media (max-width: 640px) { .journal li { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Drawer */
+#scrim { position: fixed; inset: 0; background: rgba(10, 14, 12, .32); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; }
+#scrim.on { opacity: 1; pointer-events: auto; }
+#drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100vw); background: var(--panel); border-left: 1px solid var(--rule); z-index: 40; transform: translateX(100%); transition: transform .26s cubic-bezier(.2,.7,.2,1); overflow-y: auto; overscroll-behavior: contain; }
+#drawer.on { transform: none; }
+@media (prefers-reduced-motion: reduce) { #drawer, #scrim, .spec img { transition: none; } }
+.d-head { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--rule-2); padding: 16px 24px 12px; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.d-head .close { background: none; border: 1px solid var(--rule); border-radius: 8px; padding: 5px 12px; cursor: pointer; font-size: 13px; }
+.d-body { padding: 18px 24px 60px; }
+.d-body h2 { font-size: 26px; line-height: 1.15; letter-spacing: -.02em; margin: 4px 0 8px; font-weight: 600; text-wrap: balance; }
+.d-body h3 { font-size: 15px; font-weight: 600; margin: 28px 0 8px; }
+.lineage-path { font-size: 13px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.lineage-path button { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; color: var(--ink-2); font: inherit; }
+.lineage-path .cur { color: var(--ink); font-weight: 500; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 16px 0 4px; }
+.fact { border: 1px solid var(--rule-2); border-radius: 10px; padding: 10px 12px; }
+.fact .k { font-size: 12.5px; color: var(--ink-2); }
+.fact .v { font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+.fact .v small { font-size: 12.5px; font-weight: 400; color: var(--ink-2); }
+.md { font-size: 14.5px; color: var(--ink); max-width: 70ch; }
+.md p { margin: 0 0 10px; }
+.md ul { margin: 0 0 10px; padding-left: 20px; }
+.md h4 { font-size: 14px; margin: 14px 0 4px; }
+.md code { font-family: var(--mono); font-size: .88em; background: var(--rule-2); padding: 1px 4px; border-radius: 4px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 9px; overflow: hidden; }
+.seg button { background: none; border: 0; padding: 5px 11px; font-size: 13px; cursor: pointer; color: var(--ink-2); border-left: 1px solid var(--rule); }
+.seg button:first-child { border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.viewer-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.viewer { position: relative; border: 1px solid var(--rule); border-radius: 10px; overflow: auto; max-height: 72vh; background: var(--rule-2); }
+.viewer.mobile { max-width: 400px; margin: 0 auto; }
+.viewer img { display: block; width: 100%; }
+.cmp { position: relative; }
+.cmp .top { position: absolute; inset: 0; }
+.cmp .top img { height: 100%; object-fit: cover; object-position: top; }
+.cmp-bar { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--st-champion); pointer-events: none; }
+.cmp-labels { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--ink-2); margin: 6px 2px 0; }
+input[type=range].cmp-range { width: 100%; margin: 8px 0 0; accent-color: var(--st-champion); }
+video { width: 100%; max-width: 360px; display: block; border-radius: 12px; border: 1px solid var(--rule); background: #000; }
+.votes { display: grid; gap: 10px; }
+.vote { border: 1px solid var(--rule-2); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.vote .who { font-weight: 500; }
+.vote .pref { font-size: 13px; color: var(--ink-2); margin: 2px 0 4px; }
+.meter { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 4px; }
+.meter i { width: 9px; height: 9px; border-radius: 2px; background: var(--rule); }
+.meter i.on { background: var(--ink-2); }
+.files { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+.files li { display: grid; grid-template-columns: minmax(0, 1fr) 90px 110px; gap: 10px; padding: 4px 0; align-items: center; border-top: 1px solid var(--rule-2); }
+.files li:first-child { border-top: 0; }
+.files .p { overflow-wrap: anywhere; }
+.files .n { text-align: right; color: var(--ink-2); }
+.files .bar { display: flex; height: 8px; border-radius: 3px; overflow: hidden; background: var(--rule-2); }
+.files .bar .a { background: var(--st-live); }
+.files .bar .d { background: var(--st-stillborn); }
+.links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.btn { display: inline-block; text-decoration: none; border: 1px solid var(--rule); border-radius: 9px; padding: 7px 13px; font-size: 13.5px; background: var(--panel); cursor: pointer; }
+.btn.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.note-list { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); }
+.cause { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--rule-2); font-size: 14px; }
+.loading { padding: 80px 0; color: var(--ink-3); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><b>Darwinian lab</b>, the owner's view</div>
+    <div class="updated"><span id="updated"></span><button id="refresh" type="button">Refresh</button></div>
+  </header>
+  <nav class="species" id="species" aria-label="Species"></nav>
+  <div id="main"><p class="loading">Loading the fossil record…</p></div>
+</div>
+<div id="tip" role="tooltip"></div>
+<div id="scrim"></div>
+<aside id="drawer" aria-label="Mutant details" aria-hidden="true"></aside>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const DAY = 86400000;
+const HOUR = 3600000;
+let D = null;            // API snapshot
+let SP = null;           // current species id
+let SEL = null;          // selected arm id
+let journalKind = "all";
+let journalLimit = 40;
+const viewer = { page: "/", viewport: "desktop", mode: "this", split: 50 };
+
+const STATUS = {
+  champion: { label: "Champion", color: "var(--st-champion)" },
+  live: { label: "Competing", color: "var(--st-live)" },
+  control: { label: "Frozen control", color: "var(--st-control)" },
+  retired: { label: "Retired", color: "var(--st-retired)" },
+  dead: { label: "Died of errors", color: "var(--st-dead)" },
+  stillborn: { label: "Stillborn", color: "var(--st-stillborn)" },
+  candidate: { label: "Candidate", color: "var(--st-retired)" },
+};
+const st = (s) => STATUS[s] || STATUS.candidate;
+const PERSONAS = { 1: "Busy owner on a phone", 2: "Skeptic who hates hidden costs", 3: "First-time visitor from search" };
+
+function marker(status, x, y, r = 5) {
+  const c = st(status).color;
+  switch (status) {
+    case "champion": {
+      const pts = [];
+      for (let i = 0; i < 10; i++) {
+        const rr = i % 2 ? r * 0.48 : r * 1.25;
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        pts.push((x + rr * Math.cos(a)).toFixed(1) + "," + (y + rr * Math.sin(a)).toFixed(1));
+      }
+      return `<polygon points="${pts.join(" ")}" fill="${c}" stroke="var(--panel)" stroke-width="1.5"/>`;
+    }
+    case "live": return `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" stroke="var(--panel)" stroke-width="2"/>`;
+    case "control": return `<rect x="${x - r}" y="${y - r}" width="${2 * r}" height="${2 * r}" rx="1.5" fill="${c}" stroke="var(--panel)" stroke-width="2"/>`;
+    case "retired": return `<circle cx="${x}" cy="${y}" r="${r - 0.5}" fill="var(--panel)" stroke="${c}" stroke-width="2"/>`;
+    case "dead":
+    case "stillborn": {
+      const k = r * 0.8;
+      return `<g stroke="${c}" stroke-width="2.2" stroke-linecap="round"><line x1="${x - k}" y1="${y - k}" x2="${x + k}" y2="${y + k}"/><line x1="${x - k}" y1="${y + k}" x2="${x + k}" y2="${y - k}"/></g>`;
+    }
+    default: return `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/>`;
+  }
+}
+const badge = (status) => `<span class="badge"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">${marker(status, 7, 7, 4.5)}</svg>${esc(st(status).label)}</span>`;
+
+function ago(ts) {
+  const d = (D?.now ?? Date.now()) - ts;
+  if (d < 90e3) return "just now";
+  if (d < HOUR) return Math.round(d / 60e3) + " min ago";
+  if (d < 36 * HOUR) return Math.round(d / HOUR) + " h ago";
+  return Math.round(d / DAY) + " days ago";
+}
+function span(ms) {
+  if (ms < HOUR) return Math.max(1, Math.round(ms / 60e3)) + " min";
+  if (ms < 48 * HOUR) return Math.round(ms / HOUR) + " h";
+  return (ms / DAY).toFixed(ms < 10 * DAY ? 1 : 0) + " days";
+}
+const fmtDay = (t) => new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const fmtTime = (t) => new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const pct = (x, d = 0) => (x == null || isNaN(x) ? "–" : (100 * x).toFixed(d) + "%");
+
+function titleOf(a) {
+  if (a.arm_id === "g0-ctrl") return "Frozen copy of the seed, kept as a yardstick";
+  if (a.arm_id === "g0-base") return "The seed: the hand-built first version";
+  const m = (a.mutation || "").replace(/\r/g, "").split("\n").map((l) => l.trim()).find(Boolean);
+  if (m) return m.replace(/^#+\s*/, "").replace(/^(mutation|hypothesis)\s*[:\-–]\s*/i, "");
+  const h = (a.hypothesis || "").replace(/^#+\s*/, "").trim();
+  return h ? h.split(/(?<=[.!?])\s/)[0].slice(0, 140) : a.arm_id;
+}
+const armById = (id) => D.arms.find((a) => a.arm_id === id);
+const statAll = (id) => D.stats[id]?.all || null;
+
+// ---------- tooltip ----------
+const tip = $("#tip");
+function showTip(e, html) {
+  tip.innerHTML = html;
+  tip.classList.add("on");
+  const pad = 14;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > innerWidth - 8) x = e.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = e.clientY - h - pad;
+  tip.style.left = Math.max(8, x) + "px";
+  tip.style.top = Math.max(8, y) + "px";
+}
+const hideTip = () => tip.classList.remove("on");
+function armTip(a) {
+  const s = statAll(a.arm_id);
+  const end = a.retired_at || D.now;
+  return `<div class="t-h"><span class="mono">${esc(a.arm_id)}</span>, ${esc(st(a.status).label.toLowerCase())}</div>
+    <div style="margin-bottom:6px">${esc(titleOf(a))}</div>
+    <div class="t-row"><span>Lived</span><b>${a.status === "stillborn" ? "never deployed" : span(end - a.created_at)}</b></div>
+    ${s ? `<div class="t-row"><span>Visitors (14 days)</span><b>${s.trials}</b></div><div class="t-row"><span>Success rate</span><b>${s.trials ? pct(s.successes / s.trials, 1) : "–"}</b></div>` : ""}
+    ${D.pb[a.arm_id] != null ? `<div class="t-row"><span>Chance it's best</span><b>${pct(D.pb[a.arm_id])}</b></div>` : ""}
+    ${a.cause ? `<div class="t-row"><span>Why it ended</span></div><div>${esc(a.cause.slice(0, 160))}</div>` : ""}`;
+}
+
+// ---------- data loading ----------
+async function load(sp, keepDrawer) {
+  const res = await fetch("/_dw/lab/api" + (sp ? "?species=" + encodeURIComponent(sp) : ""), { credentials: "same-origin" });
+  if (!res.ok) { $("#main").innerHTML = `<p class="loading">Couldn't load the lab (HTTP ${res.status}). Open the lab link with your key again.</p>`; return; }
+  D = await res.json();
+  SP = D.current;
+  render();
+  if (keepDrawer && SEL && armById(SEL)) openArm(SEL, true);
+}
+
+function render() {
+  $("#updated").textContent = "Updated " + new Date(D.now).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const spList = D.species.length ? D.species : [{ id: SP, name: SP }];
+  $("#species").innerHTML = spList.map((s) => `<a href="#${esc(s.id)}" data-sp="${esc(s.id)}" ${s.id === SP ? 'aria-current="page"' : ""}>${esc(s.name)}</a>`).join("");
+  const cur = spList.find((s) => s.id === SP) || {};
+  document.title = (cur.name || SP) + ", Darwinian lab";
+  $("#main").innerHTML = `
+    ${cur.domain ? `<div class="domain"><a href="https://${esc(cur.domain)}/" target="_blank" rel="noopener">${esc(cur.domain)}</a></div>` : ""}
+    <p class="summary">${summary()}</p>
+    <section class="panel lineage">
+      <h2>Family tree</h2>
+      <p class="sub">Each line is one mutant, drawn from the moment it was born until it was retired, or until now if it's still alive. Lines branch off their parent; thicker lines are getting more visitors. Crosses hanging under a line are children that never made it past the gates. Click any line for the full story.</p>
+      <div class="legend">${["champion", "live", "control", "retired", "dead", "stillborn"].map((s) => `<span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">${marker(s, 8, 8, 5.5)}</svg>${st(s).label}</span>`).join("")}</div>
+      <div class="scroll-x" id="treeBox"></div>
+    </section>
+    <div class="grid two">
+      <section class="panel"><h2>How each competitor is doing</h2><p class="sub" id="fitSub"></p><div id="fit"></div></section>
+      <section class="panel"><h2>Chance of being the best, over time</h2><p class="sub">Recomputed every evolve cycle (every 3 hours). A challenger that holds 95% replaces the champion.</p><div id="pbChart"></div></section>
+    </div>
+    <div class="grid two">
+      <section class="panel"><h2>Where visitors came from</h2><p class="sub">Distinct visitors per day over the last 30 days, by the site that sent them. Your own visits aren't counted.</p><div id="src"></div></section>
+      <section class="panel"><h2>Does AI search recommend it?</h2><p class="sub">Once a week the loop asks an AI assistant with web search a real user question and checks whether this site is in its top five.</p><div id="probes"></div></section>
+    </div>
+    <section class="panel" style="margin-top:18px"><h2>Specimens</h2><p class="sub">The home page of every mutant, newest first. Photos are taken when a mutant is born.</p><div class="specimens" id="specimens"></div></section>
+    <section class="panel" style="margin-top:18px"><h2>Journal</h2><p class="sub">Every decision the loop made, newest first.</p><div class="chips" id="chips"></div><ul class="journal" id="journal"></ul><div id="jmore"></div></section>`;
+  drawTree();
+  drawFitness();
+  drawPb();
+  drawSources();
+  drawProbes();
+  drawSpecimens();
+  drawJournal();
+}
+
+function summary() {
+  const stg = D.state.stages[D.state.stage];
+  const competing = D.arms.filter((a) => a.status === "live").length;
+  const champ = D.arms.find((a) => a.status === "champion");
+  const since = Math.floor((D.now - 7 * DAY) / DAY);
+  const week = D.sources.filter((r) => r.d >= since && r.src !== "internal").reduce((n, r) => n + r.n, 0);
+  const ai = D.sources.filter((r) => r.d >= since && AI.has(r.src)).reduce((n, r) => n + r.n, 0);
+  const born = D.arms.filter((a) => a.created_at > D.now - 7 * DAY && a.status !== "control");
+  const still = born.filter((a) => a.status === "stillborn").length;
+  const nextCycle = Math.ceil((D.now + 1) / (3 * HOUR)) * 3 * HOUR;
+  let s = `Generation ${D.state.generation}. `;
+  s += stg ? `Selecting on <b>${esc(stg.name)}</b>${stg.describe ? ` (${esc(stg.describe)})` : ""}. ` : "";
+  s += champ ? `The champion is <button class="link-arm mono" data-arm="${esc(champ.arm_id)}" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px;font-family:var(--mono);font-size:.86em">${esc(champ.arm_id)}</button>, challenged by ${competing} mutant${competing === 1 ? "" : "s"}. ` : "";
+  s += `${week} visitor${week === 1 ? "" : "s"} in the last 7 days${ai ? `, ${ai} sent by AI assistants` : ""}. `;
+  s += `${born.length} mutant${born.length === 1 ? " was" : "s were"} born this week${still ? `, ${still} stillborn` : ""}. Next evolve cycle in ${(() => { const m = Math.max(1, Math.round((nextCycle - D.now) / 60e3)); return m < 90 ? m + " min" : (m / 60).toFixed(1) + " h"; })()}.`;
+  return s;
+}
+
+// ---------- family tree ----------
+function drawTree() {
+  const box = $("#treeBox");
+  const arms = D.arms.slice().sort((a, b) => a.created_at - b.created_at);
+  if (!arms.length) { box.innerHTML = `<p class="empty">No mutants yet.</p>`; return; }
+  const living = arms.filter((a) => a.status !== "stillborn");
+  const ids = new Set(living.map((a) => a.arm_id));
+  const kids = {};
+  for (const a of living) if (a.parent && ids.has(a.parent)) (kids[a.parent] ??= []).push(a);
+  const roots = living.filter((a) => !a.parent || !ids.has(a.parent));
+  roots.sort((a, b) => (a.status === "control") - (b.status === "control") || a.created_at - b.created_at);
+  const order = [];
+  const visit = (a) => { order.push(a); for (const k of kids[a.arm_id] || []) visit(k); };
+  roots.forEach(visit);
+  const lane = Object.fromEntries(order.map((a, i) => [a.arm_id, i]));
+
+  const t0 = Math.min(...arms.map((a) => a.created_at)) - 3 * HOUR;
+  const t1 = D.now + Math.max(2 * HOUR, (D.now - t0) * 0.03);
+  const avail = Math.max(320, box.clientWidth - 4);
+  const W = Math.max(avail, Math.min(4000, ((t1 - t0) / DAY) * 90));
+  const L = 64, R = 26, TOP = 20, LH = 44;
+  const H = TOP + order.length * LH + 34;
+  const x = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R);
+  const y = (id) => TOP + lane[id] * LH + LH / 2 + 4;
+  const maxTrials = Math.max(1, ...living.map((a) => statAll(a.arm_id)?.trials || 0));
+
+  let g = "";
+  // day grid + axis
+  const days = (t1 - t0) / DAY;
+  const step = Math.max(1, Math.ceil(days / ((W - L) / 80)));
+  let axis = "";
+  for (let d = Math.ceil(t0 / DAY); d * DAY <= t1; d += step) {
+    const xx = x(d * DAY);
+    axis += `<line x1="${xx}" x2="${xx}" y1="${TOP - 6}" y2="${H - 26}" stroke-dasharray="2 4"/><text x="${xx}" y="${H - 8}" text-anchor="middle">${fmtDay(d * DAY)}</text>`;
+  }
+  g += `<g class="axis">${axis}</g>`;
+  g += `<line x1="${x(D.now)}" x2="${x(D.now)}" y1="${TOP - 10}" y2="${H - 26}" stroke="var(--ink-3)" stroke-width="1"/><text x="${x(D.now)}" y="${TOP - 12}" text-anchor="end" font-size="11" fill="var(--ink-3)" dx="-4">now</text>`;
+
+  // hit areas first (under the marks)
+  for (const a of order) {
+    g += `<rect class="lane-hit${a.arm_id === SEL ? " sel" : ""}" data-arm="${esc(a.arm_id)}" x="0" y="${y(a.arm_id) - LH / 2 - 4}" width="${W}" height="${LH}" rx="6"/>`;
+  }
+  // connectors
+  for (const a of order) {
+    if (!a.parent || !ids.has(a.parent)) continue;
+    const xc = x(a.created_at), yp = y(a.parent), yc = y(a.arm_id);
+    const r = Math.min(10, Math.abs(yc - yp) / 2);
+    const dir = yc > yp ? 1 : -1;
+    g += `<path d="M${xc},${yp} L${xc},${yc - dir * r} Q${xc},${yc} ${xc + r},${yc}" fill="none" stroke="${st(a.status).color}" stroke-opacity=".55" stroke-width="1.6" pointer-events="none"/>`;
+  }
+  // lifelines
+  const promotions = D.journal.filter((j) => j.kind === "promote");
+  for (const a of order) {
+    const c = st(a.status).color;
+    const x1 = x(a.created_at), x2 = Math.max(x1 + 2, x(a.retired_at || D.now)), yy = y(a.arm_id);
+    const tr = statAll(a.arm_id)?.trials || 0;
+    const w = 2.2 + 5 * (tr / maxTrials);
+    const ended = ["retired", "dead"].includes(a.status);
+    g += `<line x1="${x1}" x2="${x2}" y1="${yy}" y2="${yy}" stroke="${c}" stroke-width="${w.toFixed(1)}" stroke-linecap="round" ${a.status === "control" ? 'stroke-dasharray="6 5"' : ""} ${ended ? 'stroke-opacity=".7"' : ""} pointer-events="none"/>`;
+    g += `<circle cx="${x1}" cy="${yy}" r="3.4" fill="var(--panel)" stroke="${c}" stroke-width="1.8" pointer-events="none"/>`;
+    for (const p of promotions.filter((p) => p.arm_id === a.arm_id)) g += `<g pointer-events="none">${marker("champion", x(p.ts), yy, 4)}</g>`;
+    g += `<g pointer-events="none">${marker(a.status, x2, yy, 5.5)}</g>`;
+    // label: id + title, kept inside the chart
+    const room = Math.floor((W - R - x1) / 6.6) - a.arm_id.length - 2; // characters that fit before the right edge
+    const anchorEnd = room < 18;
+    const label = `<tspan font-family="var(--mono)" font-size="11.5" fill="var(--ink)" font-weight="500">${esc(a.arm_id)}</tspan><tspan dx="8" fill="var(--ink-2)" font-size="12.5">${esc(truncate(titleOf(a), anchorEnd ? 60 : Math.min(80, room)))}</tspan>`;
+    g += `<text x="${anchorEnd ? x2 - 2 : x1 + 2}" y="${yy - 9}" text-anchor="${anchorEnd ? "end" : "start"}" pointer-events="none">${label}</text>`;
+  }
+  // stillborn children hang under their parent's line
+  const still = arms.filter((a) => a.status === "stillborn");
+  const perParent = {};
+  for (const a of still) {
+    const p = a.parent && ids.has(a.parent) ? a.parent : order[0].arm_id;
+    const k = (perParent[p] = (perParent[p] || 0) + 1);
+    const xx = x(a.created_at), yy = y(p) + 11 + ((k - 1) % 2) * 0;
+    g += `<g class="stillborn-hit" data-arm="${esc(a.arm_id)}"><line x1="${xx}" x2="${xx}" y1="${y(p) + 3}" y2="${yy - 3}" stroke="var(--st-stillborn)" stroke-opacity=".5" stroke-width="1.2"/>${marker("stillborn", xx, yy, 4)}<rect x="${xx - 8}" y="${yy - 8}" width="16" height="16" fill="transparent"/></g>`;
+  }
+  box.innerHTML = `<svg class="tree" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Family tree of mutants over time">${g}</svg>`;
+  box.querySelectorAll("[data-arm]").forEach((n) => {
+    const a = armById(n.dataset.arm);
+    n.addEventListener("mousemove", (e) => showTip(e, armTip(a)));
+    n.addEventListener("mouseleave", hideTip);
+    n.addEventListener("click", () => { hideTip(); openArm(a.arm_id); });
+  });
+  // start scrolled to "now"
+  box.scrollLeft = box.scrollWidth;
+}
+const truncate = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+
+// ---------- fitness: rate with 95% credible interval ----------
+function gamma(k) {
+  if (k < 1) return gamma(k + 1) * Math.pow(Math.random(), 1 / k);
+  const d = k - 1 / 3, c = 1 / Math.sqrt(9 * d);
+  for (;;) {
+    let z, v;
+    do { const u1 = Math.random(), u2 = Math.random(); z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2); v = 1 + c * z; } while (v <= 0);
+    v = v * v * v;
+    const u = Math.random();
+    if (u < 1 - 0.0331 * z ** 4 || Math.log(u) < 0.5 * z * z + d * (1 - v + Math.log(v))) return d * v;
+  }
+}
+function betaCI(s, n) {
+  const xs = [];
+  for (let i = 0; i < 3000; i++) { const a = gamma(1 + s), b = gamma(1 + n - s); xs.push(a / (a + b)); }
+  xs.sort((p, q) => p - q);
+  return [xs[75], xs[2925]];
+}
+function drawFitness() {
+  const stg = D.state.stages[D.state.stage];
+  $("#fitSub").innerHTML = `Share of real visitors (people whose browser ran the page) who ${stg ? `reached <b>${esc(stg.name)}</b>` : "succeeded"}, over the last 14 days. The bar is the 95% range the true rate probably sits in: wide bars mean too few visitors to tell yet.`;
+  const rows = D.arms.filter((a) => ["champion", "live", "control"].includes(a.status))
+    .sort((a, b) => ["champion", "live", "control"].indexOf(a.status) - ["champion", "live", "control"].indexOf(b.status) || a.created_at - b.created_at)
+    .map((a) => { const s = statAll(a.arm_id) || { trials: 0, successes: 0 }; return { a, s, ci: s.trials ? betaCI(s.successes, s.trials) : null }; });
+  if (!rows.length) { $("#fit").innerHTML = `<p class="empty">No competitors alive.</p>`; return; }
+  const max = Math.min(1, Math.max(0.1, ...rows.map((r) => (r.ci ? r.ci[1] : 0))) * 1.08);
+  const W = Math.max(300, $("#fit").clientWidth), RH = 34, L = 104, R = 70, TOP = 6;
+  const H = TOP + rows.length * RH + 26;
+  const x = (v) => L + (v / max) * (W - L - R);
+  let g = "";
+  const ticks = niceTicks(max, 4);
+  for (const t of ticks) g += `<line class="grid-line" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${H - 22}"/><text x="${x(t)}" y="${H - 6}" text-anchor="middle">${pct(t)}</text>`;
+  rows.forEach((r, i) => {
+    const yy = TOP + i * RH + RH / 2;
+    const c = st(r.a.status).color;
+    g += `<rect class="row-hit" data-arm="${esc(r.a.arm_id)}" x="0" y="${yy - RH / 2}" width="${W}" height="${RH}" fill="transparent" style="cursor:pointer"/>`;
+    g += `<g pointer-events="none">${marker(r.a.status, 8, yy, 4.5)}<text x="20" y="${yy + 4}" font-family="var(--mono)" font-size="11.5" fill="var(--ink)">${esc(r.a.arm_id)}</text>`;
+    if (r.ci) {
+      g += `<line x1="${x(r.ci[0])}" x2="${x(r.ci[1])}" y1="${yy}" y2="${yy}" stroke="${c}" stroke-width="6" stroke-linecap="round" stroke-opacity=".28"/>`;
+      g += `<circle cx="${x(r.s.successes / r.s.trials)}" cy="${yy}" r="5" fill="${c}" stroke="var(--panel)" stroke-width="2"/>`;
+      g += `<text x="${W - 4}" y="${yy + 4}" text-anchor="end">${r.s.successes} of ${r.s.trials}</text>`;
+    } else g += `<text x="${L}" y="${yy + 4}" fill="var(--ink-3)">no visitors yet</text>`;
+    g += `</g>`;
+  });
+  $("#fit").innerHTML = `<svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Success rate per competitor">${g}</svg>`;
+  $("#fit").querySelectorAll(".row-hit").forEach((n) => {
+    const r = rows.find((r) => r.a.arm_id === n.dataset.arm);
+    n.addEventListener("mousemove", (e) => showTip(e, `<div class="t-h mono">${esc(r.a.arm_id)}</div>
+      <div class="t-row"><span>Visitors</span><b>${r.s.trials}</b></div><div class="t-row"><span>Successes</span><b>${r.s.successes}</b></div>
+      ${r.ci ? `<div class="t-row"><span>Rate</span><b>${pct(r.s.successes / r.s.trials, 1)}</b></div><div class="t-row"><span>95% range</span><b>${pct(r.ci[0], 1)} to ${pct(r.ci[1], 1)}</b></div>` : ""}
+      ${["mobile", "desktop"].map((seg) => { const s = D.stats[r.a.arm_id]?.[seg]; return s ? `<div class="t-row"><span>${seg === "mobile" ? "On phones" : "On desktop"}</span><b>${s.successes} of ${s.trials}</b></div>` : ""; }).join("")}`));
+    n.addEventListener("mouseleave", hideTip);
+    n.addEventListener("click", () => openArm(r.a.arm_id));
+  });
+}
+function niceTicks(max, n) {
+  const raw = max / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) || raw;
+  const out = [];
+  for (let v = 0; v <= max + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+
+// ---------- P(best) over time ----------
+const SLOTS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)", "var(--s6)", "var(--s7)", "var(--s8)"];
+function drawPb() {
+  const box = $("#pbChart");
+  const hist = D.pbHistory.slice();
+  for (const [id, p] of Object.entries(D.pb)) hist.push({ ts: D.now, arm_id: id, pbest: p });
+  const byArm = {};
+  for (const h of hist) (byArm[h.arm_id] ??= []).push(h);
+  const armsIn = Object.keys(byArm).map(armById).filter(Boolean).sort((a, b) => a.created_at - b.created_at);
+  const pts = hist.length;
+  if (D.pbHistory.length < 2) {
+    box.innerHTML = `<p class="empty">The first points arrive with the next evolve cycles. Right now: ${armsIn.map((a) => `<span class="mono">${esc(a.arm_id)}</span> ${pct(D.pb[a.arm_id])}`).join(", ") || "no competitors"}.</p>`;
+    return;
+  }
+  const shown = armsIn.slice(-8); // color follows the arm; more than eight never share a chart
+  const color = Object.fromEntries(shown.map((a, i) => [a.arm_id, SLOTS[i]]));
+  const t0 = Math.min(...hist.map((h) => h.ts)), t1 = D.now;
+  const W = Math.max(300, box.clientWidth), H = 230, L = 40, R = 86, TOP = 10, B = 26;
+  const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
+  const y = (p) => TOP + (1 - p) * (H - TOP - B);
+  let g = "";
+  for (const p of [0, 0.25, 0.5, 0.75, 1]) g += `<line class="grid-line" x1="${L}" x2="${W - R}" y1="${y(p)}" y2="${y(p)}"/><text x="${L - 6}" y="${y(p) + 4}" text-anchor="end">${pct(p)}</text>`;
+  g += `<line x1="${L}" x2="${W - R}" y1="${y(0.95)}" y2="${y(0.95)}" stroke="var(--st-champion)" stroke-dasharray="4 4"/><text x="${L + 4}" y="${y(0.95) - 5}" fill="var(--ink-2)">promotion line</text>`;
+  const days = (t1 - t0) / DAY;
+  const step = Math.max(1, Math.ceil(days / 5));
+  for (let d = Math.ceil(t0 / DAY); d * DAY <= t1; d += step) g += `<text x="${x(d * DAY)}" y="${H - 6}" text-anchor="middle">${fmtDay(d * DAY)}</text>`;
+  const labels = [];
+  for (const a of shown) {
+    const s = byArm[a.arm_id].sort((p, q) => p.ts - q.ts);
+    g += `<polyline fill="none" stroke="${color[a.arm_id]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${s.map((h) => x(h.ts).toFixed(1) + "," + y(h.pbest).toFixed(1)).join(" ")}"/>`;
+    const last = s[s.length - 1];
+    g += `<circle cx="${x(last.ts)}" cy="${y(last.pbest)}" r="4" fill="${color[a.arm_id]}" stroke="var(--panel)" stroke-width="2"/>`;
+    labels.push({ y: y(last.pbest), text: a.arm_id, c: color[a.arm_id] });
+  }
+  // direct labels at line ends, nudged apart
+  labels.sort((p, q) => p.y - q.y);
+  for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 14) labels[i].y = labels[i - 1].y + 14;
+  for (const l of labels) g += `<text x="${W - R + 8}" y="${l.y + 4}" font-family="var(--mono)" font-size="11" fill="var(--ink)">${esc(l.text)}</text>`;
+  g += `<line id="pbCross" x1="0" x2="0" y1="${TOP}" y2="${H - B}" stroke="var(--ink-3)" visibility="hidden"/><rect id="pbHit" x="${L}" y="${TOP}" width="${W - L - R}" height="${H - TOP - B}" fill="transparent"/>`;
+  box.innerHTML = `<div class="legend-row">${shown.map((a) => `<span><i style="background:${color[a.arm_id]}"></i><span class="mono">${esc(a.arm_id)}</span></span>`).join("")}</div><svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Chance of being best over time">${g}</svg>`;
+  const hit = $("#pbHit", box), cross = $("#pbCross", box);
+  const times = [...new Set(hist.map((h) => h.ts))].sort((a, b) => a - b);
+  hit.addEventListener("mousemove", (e) => {
+    const r = hit.getBoundingClientRect();
+    const t = t0 + ((e.clientX - r.left) / r.width) * (t1 - t0);
+    const tt = times.reduce((b, c) => (Math.abs(c - t) < Math.abs(b - t) ? c : b), times[0]);
+    cross.setAttribute("x1", x(tt)); cross.setAttribute("x2", x(tt)); cross.setAttribute("visibility", "visible");
+    const rows = shown.map((a) => ({ a, h: byArm[a.arm_id].find((h) => h.ts === tt) })).filter((r) => r.h).sort((p, q) => q.h.pbest - p.h.pbest);
+    showTip(e, `<div class="t-h">${fmtTime(tt)}</div>${rows.map((r) => `<div class="t-row"><span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color[r.a.arm_id]};margin-right:6px"></i><span class="mono">${esc(r.a.arm_id)}</span></span><b>${pct(r.h.pbest)}</b></div>`).join("")}`);
+  });
+  hit.addEventListener("mouseleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
+}
+
+// ---------- traffic sources ----------
+const AI = new Set(["chatgpt", "perplexity", "gemini", "claude", "copilot"]);
+const SEARCH = new Set(["google", "bing", "duckduckgo", "yandex"]);
+const SOCIAL = new Set(["reddit", "hackernews", "x", "linkedin", "facebook"]);
+const GROUPS = [
+  { id: "ai", label: "AI assistants", color: "var(--s1)", test: (s) => AI.has(s) },
+  { id: "search", label: "Search engines", color: "var(--s2)", test: (s) => SEARCH.has(s) },
+  { id: "social", label: "Communities and social", color: "var(--s3)", test: (s) => SOCIAL.has(s) },
+  { id: "other", label: "Other sites", color: "var(--s4)", test: (s) => s && !["direct", "unknown", "internal"].includes(s) },
+  { id: "direct", label: "Direct or unknown", color: "var(--s-rest)", test: () => true },
+];
+function drawSources() {
+  const box = $("#src");
+  const rows = D.sources.filter((r) => r.src !== "internal");
+  if (!rows.length) { box.innerHTML = `<p class="empty">No visitors in the last 30 days.</p>`; return; }
+  const today = Math.floor(D.now / DAY);
+  const days = Array.from({ length: 30 }, (_, i) => today - 29 + i);
+  const cell = {};
+  for (const r of rows) {
+    const g = GROUPS.find((g) => g.test(r.src));
+    const k = r.d + ":" + g.id;
+    cell[k] = (cell[k] || 0) + r.n;
+    (cell[k + ":detail"] ??= []).push(`${r.src || "unknown"} ${r.n}`);
+  }
+  const totals = days.map((d) => GROUPS.reduce((n, g) => n + (cell[d + ":" + g.id] || 0), 0));
+  const max = Math.max(1, ...totals);
+  const ticks = niceTicks(max, 3).filter((t) => Number.isInteger(t));
+  const top = Math.max(max, ticks[ticks.length - 1]);
+  const W = Math.max(300, box.clientWidth), H = 200, L = 28, R = 4, TOP = 8, B = 24;
+  const bw = (W - L - R) / days.length;
+  const y = (v) => TOP + (1 - v / top) * (H - TOP - B);
+  let g = "";
+  for (const t of ticks) g += `<line class="grid-line" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${t}</text>`;
+  days.forEach((d, i) => {
+    let acc = 0;
+    const x0 = L + i * bw + 1, w = Math.max(2, bw - 2);
+    const segs = GROUPS.map((gr) => ({ gr, n: cell[d + ":" + gr.id] || 0 })).filter((s) => s.n);
+    segs.forEach((s, j) => {
+      const y1 = y(acc + s.n), y0 = y(acc);
+      const isTop = j === segs.length - 1;
+      const h = Math.max(1, y0 - y1 - (isTop ? 0 : 2));
+      g += isTop
+        ? `<path d="M${x0},${y0} V${y1 + Math.min(4, h)} Q${x0},${y1} ${x0 + Math.min(4, w / 2)},${y1} H${x0 + w - Math.min(4, w / 2)} Q${x0 + w},${y1} ${x0 + w},${y1 + Math.min(4, h)} V${y0} Z" fill="${s.gr.color}"/>`
+        : `<rect x="${x0}" y="${y1 + 2}" width="${w}" height="${h}" fill="${s.gr.color}"/>`;
+      acc += s.n;
+    });
+    g += `<rect class="bar-hit" data-i="${i}" x="${L + i * bw}" y="${TOP}" width="${bw}" height="${H - TOP - B}" fill="transparent"/>`;
+    if (i % 7 === 2) g += `<text x="${x0 + w / 2}" y="${H - 6}" text-anchor="middle">${fmtDay(d * DAY)}</text>`;
+  });
+  g += `<line class="base" x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}"/>`;
+  box.innerHTML = `<div class="legend-row">${GROUPS.map((gr) => `<span><i style="background:${gr.color}"></i>${gr.label}</span>`).join("")}</div><svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Visitors per day by source">${g}</svg>`;
+  box.querySelectorAll(".bar-hit").forEach((n) => {
+    const d = days[+n.dataset.i];
+    n.addEventListener("mousemove", (e) => showTip(e, `<div class="t-h">${fmtDay(d * DAY)}, ${totals[+n.dataset.i]} visitors</div>${GROUPS.filter((gr) => cell[d + ":" + gr.id]).map((gr) => `<div class="t-row"><span>${gr.label}</span><b>${cell[d + ":" + gr.id]}</b></div><div class="faint" style="font-size:12px;margin-bottom:3px">${esc(cell[d + ":" + gr.id + ":detail"].join(", "))}</div>`).join("") || "No visitors"}`));
+    n.addEventListener("mouseleave", hideTip);
+  });
+}
+
+// ---------- AI visibility probes ----------
+function drawProbes() {
+  const probes = D.journal.filter((j) => j.kind === "probe").slice(0, 8);
+  if (!probes.length) { $("#probes").innerHTML = `<p class="empty">The first probe runs within a week of launch.</p>`; return; }
+  $("#probes").innerHTML = `<ul class="probes">${probes.map((p) => {
+    const m = p.detail.match(/^"(.+?)":\s*(RECOMMENDED|not recommended)\s*\(top:\s*(.*)\)$/);
+    if (!m) return `<li>${esc(p.detail)}</li>`;
+    const yes = m[2] === "RECOMMENDED";
+    return `<li><div class="q">“${esc(m[1])}”</div><div style="margin:3px 0"><span class="pill" style="color:${yes ? "var(--st-live)" : "var(--ink-3)"}">${yes ? "Recommended" : "Not in the top five"}</span> <span class="faint" style="font-size:12.5px">${fmtDay(p.ts)}</span></div><div class="r">Recommended instead: ${esc(m[3] || "nothing")}</div></li>`;
+  }).join("")}</ul>`;
+}
+
+// ---------- specimens ----------
+function shotsOf(id) { return D.media.filter((m) => m.arm_id === id && m.kind === "shot"); }
+const mediaUrl = (m) => "/_dw/lab/media/" + m.id;
+function heroShot(id) {
+  const s = shotsOf(id);
+  return s.find((m) => m.page === "/" && m.viewport === "desktop") || s.find((m) => m.viewport === "desktop") || s[0];
+}
+function drawSpecimens() {
+  const arms = D.arms.slice().sort((a, b) => b.created_at - a.created_at);
+  $("#specimens").innerHTML = arms.map((a) => {
+    const m = heroShot(a.arm_id);
+    const why = a.status === "stillborn" ? "Never deployed" : "No photo: lived before photos were taken";
+    return `<button class="spec ${["retired", "dead", "stillborn"].includes(a.status) ? "dim" : ""}" data-arm="${esc(a.arm_id)}" type="button">
+      <div class="frame">${m ? `<img loading="lazy" src="${mediaUrl(m)}" alt="Home page of ${esc(a.arm_id)}">` : `<div class="nophoto">${why}</div>`}</div>
+      <div class="meta"><span class="mono">${esc(a.arm_id)}</span>${badge(a.status)}</div>
+      <div class="ttl">${esc(titleOf(a))}</div></button>`;
+  }).join("");
+  $("#specimens").querySelectorAll(".spec").forEach((n) => n.addEventListener("click", () => openArm(n.dataset.arm)));
+}
+
+// ---------- journal ----------
+const KIND = {
+  spawn: ["Born", "var(--st-live)"], reject: ["Stillborn", "var(--st-stillborn)"], promote: ["Promoted", "var(--st-champion)"],
+  retire: ["Retired", "var(--ink-2)"], death: ["Died", "var(--st-dead)"], stage: ["New stage", "var(--st-control)"],
+  probe: ["AI probe", "var(--st-control)"], indexnow: ["Indexing", "var(--ink-3)"], note: ["Note", "var(--ink-2)"], reminder: ["Reminder", "var(--st-champion)"],
+};
+function drawJournal() {
+  const kinds = ["all", ...Object.keys(KIND).filter((k) => D.journal.some((j) => j.kind === k))];
+  $("#chips").innerHTML = kinds.map((k) => `<button class="chip" type="button" data-k="${k}" aria-pressed="${k === journalKind}">${k === "all" ? "Everything" : KIND[k][0]}</button>`).join("");
+  $("#chips").querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => { journalKind = c.dataset.k; journalLimit = 40; drawJournal(); }));
+  const list = D.journal.filter((j) => journalKind === "all" || j.kind === journalKind);
+  $("#journal").innerHTML = list.slice(0, journalLimit).map((j) => {
+    const [label, color] = KIND[j.kind] || [j.kind, "var(--ink-2)"];
+    const det = esc(j.detail).replace(/\b(g\d+-[a-z0-9]{3,6}|g0-(?:base|ctrl))\b/g, (m) => (armById(m) ? `<a href="#${SP}/${m}" data-arm="${m}" class="mono">${m}</a>` : m));
+    return `<li><span class="when">${fmtTime(j.ts)}</span><span class="kind" style="color:${color}">${esc(label)}</span><span class="det">${j.arm_id && armById(j.arm_id) ? `<a href="#${SP}/${esc(j.arm_id)}" data-arm="${esc(j.arm_id)}" class="mono">${esc(j.arm_id)}</a> ` : j.arm_id ? `<span class="mono">${esc(j.arm_id)}</span> ` : ""}${det}</span></li>`;
+  }).join("") || `<li><span class="faint">Nothing yet.</span></li>`;
+  $("#jmore").innerHTML = list.length > journalLimit ? `<button class="more" type="button">Show ${Math.min(60, list.length - journalLimit)} more</button>` : "";
+  $("#jmore button")?.addEventListener("click", () => { journalLimit += 60; drawJournal(); });
+  $("#journal").querySelectorAll(".det").forEach((d) => d.addEventListener("click", (e) => { if (!e.target.closest("a")) d.classList.toggle("open"); }));
+}
+
+// ---------- drawer: one mutant ----------
+function md(text) {
+  const lines = esc(text || "").replace(/\r/g, "").split("\n");
+  let out = "", list = false, para = [];
+  const inline = (s) => s.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  const flush = () => { if (para.length) { out += `<p>${inline(para.join(" "))}</p>`; para = []; } };
+  for (const raw of lines) {
+    const l = raw.trim();
+    if (/^[-*]\s+/.test(l)) { flush(); if (!list) { out += "<ul>"; list = true; } out += `<li>${inline(l.replace(/^[-*]\s+/, ""))}</li>`; continue; }
+    if (list) { out += "</ul>"; list = false; }
+    if (!l) { flush(); continue; }
+    if (/^#{1,6}\s/.test(l)) { flush(); out += `<h4>${inline(l.replace(/^#+\s*/, ""))}</h4>`; continue; }
+    para.push(l);
+  }
+  flush();
+  if (list) out += "</ul>";
+  return out;
+}
+function ancestry(a) {
+  const chain = [a];
+  let p = a.parent && armById(a.parent);
+  while (p && chain.length < 30) { chain.unshift(p); p = p.parent && armById(p.parent); }
+  return chain;
+}
+function openArm(id, quiet) {
+  const a = armById(id);
+  if (!a) return;
+  SEL = id;
+  if (!quiet) history.replaceState(null, "", `#${SP}/${id}`);
+  document.querySelectorAll(".lane-hit").forEach((n) => n.classList.toggle("sel", n.dataset.arm === id));
+  const parent = a.parent && armById(a.parent);
+  const s = statAll(a.arm_id);
+  const children = D.arms.filter((c) => c.parent === a.arm_id);
+  const pages = [...new Set(shotsOf(id).map((m) => m.page))];
+  if (!pages.includes(viewer.page)) viewer.page = pages[0] || "/";
+  const video = D.media.find((m) => m.arm_id === id && m.kind === "video");
+  const alive = ["live", "champion", "control"].includes(a.status);
+  const spInfo = D.species.find((x) => x.id === SP) || {};
+  const visit = spInfo.domain ? `https://${spInfo.domain}/_dw/lab/visit?arm=${encodeURIComponent(id)}&t=${D.handoff}` : null;
+  const ghBase = `https://github.com/${D.repo}`;
+  const votes = Array.isArray(a.personas) ? a.personas : [];
+  const audit = a.audit || {};
+  const files = Array.isArray(a.diffstat) ? a.diffstat : [];
+  const maxLines = Math.max(1, ...files.map((f) => (f.add || 0) + (f.del || 0)));
+  const jr = D.journal.filter((j) => j.arm_id === id || (j.detail || "").includes(id));
+
+  $("#drawer").innerHTML = `
+    <div class="d-head"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="mono" style="font-size:14px">${esc(id)}</span>${badge(a.status)}${a.size ? `<span class="faint" style="font-size:13px">${esc(a.size)} mutation</span>` : ""}</div><button class="close" type="button">Close</button></div>
+    <div class="d-body">
+      <div class="lineage-path">${ancestry(a).map((x, i, arr) => (i === arr.length - 1 ? `<span class="cur mono">${esc(x.arm_id)}</span>` : `<button type="button" data-arm="${esc(x.arm_id)}" class="mono">${esc(x.arm_id)}</button><span aria-hidden="true">›</span>`)).join("")}</div>
+      <h2>${esc(titleOf(a))}</h2>
+      <div class="muted" style="font-size:14px">Born ${fmtTime(a.created_at)} (${ago(a.created_at)})${a.retired_at ? `, ended after ${span(a.retired_at - a.created_at)}` : alive ? `, alive for ${span(D.now - a.created_at)}` : ""}${children.length ? `. ${children.length} child${children.length === 1 ? "" : "ren"}: ${children.map((c) => `<button type="button" data-arm="${esc(c.arm_id)}" class="mono" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px">${esc(c.arm_id)}</button>`).join(", ")}` : ""}.</div>
+      ${a.cause ? `<div class="cause"><b>${a.status === "stillborn" ? "Why it didn't survive the gates" : "Why it ended"}:</b> ${esc(a.cause)}</div>` : ""}
+      <div class="facts">
+        <div class="fact"><div class="k">Visitors, 14 days</div><div class="v">${s ? s.trials : "–"}</div></div>
+        <div class="fact"><div class="k">Success rate</div><div class="v">${s && s.trials ? pct(s.successes / s.trials, 1) : "–"} ${s ? `<small>${s.successes} of ${s.trials}</small>` : ""}</div></div>
+        <div class="fact"><div class="k">Chance it's best</div><div class="v">${D.pb[id] != null ? pct(D.pb[id]) : "–"}</div></div>
+        <div class="fact"><div class="k">Errors</div><div class="v">${s ? s.errors : "–"} <small>${s ? `of ${s.requests} requests` : ""}</small></div></div>
+      </div>
+      <div class="links">
+        ${alive && visit ? `<a class="btn primary" href="${visit}" target="_blank" rel="noopener">Browse the site as this mutant</a>` : ""}
+        ${a.git_ref && a.git_ref.startsWith("fossil/") ? `<a class="btn" href="${ghBase}/commits/${encodeURIComponent(a.git_ref)}" target="_blank" rel="noopener">Commit</a>` : ""}
+        ${parent && parent.git_ref && a.git_ref && a.git_ref.startsWith("fossil/") ? `<a class="btn" href="${ghBase}/compare/${encodeURIComponent(parent.git_ref)}...${encodeURIComponent(a.git_ref)}" target="_blank" rel="noopener">Code changes vs parent</a>` : ""}
+      </div>
+      ${alive && visit ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">Browsing as a mutant sticks to it on that domain. <a href="https://${esc(spInfo.domain)}/_dw/lab/visit?arm=&t=${D.handoff}" target="_blank" rel="noopener">Stop previewing</a> to get a normal assignment back. Your visits are never counted.</p>` : ""}
+
+      <h3>What it looks like</h3>
+      <div id="viewer"></div>
+      ${video ? `<h3>Scrolling through it on a phone</h3><video src="${mediaUrl(video)}" controls muted playsinline loop preload="metadata"></video>` : ""}
+
+      <h3>What the mutation tried</h3>
+      <div class="md">${a.mutation ? md(a.mutation) : `<p>${esc(a.hypothesis || "No description recorded.")}</p>`}</div>
+
+      ${votes.length ? `<h3>Persona screen before release</h3><p class="sub muted" style="font-size:13.5px;margin:-4px 0 10px">Three simulated visitors compared the parent (A) with this mutant (B).</p><div class="votes">${votes.map((v) => `<div class="vote"><div class="who">${esc(PERSONAS[v.persona] || "Persona " + v.persona)}</div><div class="pref">${v.prefers === "B" ? "Preferred this mutant" : v.prefers === "A" ? "Preferred the parent" : "No preference"}<span class="meter" aria-label="strength ${+v.strength || 0} of 5">${[1, 2, 3, 4, 5].map((k) => `<i class="${k <= v.strength ? "on" : ""}"></i>`).join("")}</span></div><div>${esc(v.why || "")}</div></div>`).join("")}</div>` : ""}
+
+      ${audit.summary || (audit.notes || []).length || (audit.rounds || []).length ? `<h3>Independent audit</h3>${audit.summary ? `<p style="margin:0 0 8px">${esc(audit.summary)}</p>` : ""}${(audit.rounds || []).length ? `<p class="muted" style="font-size:13.5px;margin:0 0 6px">Blocking problems found and fixed first:</p><ul class="note-list">${audit.rounds.flat().map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}${(audit.notes || []).length ? `<p class="muted" style="font-size:13.5px;margin:8px 0 6px">Minor notes:</p><ul class="note-list">${audit.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}` : ""}
+
+      ${files.length ? `<h3>Files changed</h3><ul class="files">${files.map((f) => `<li><span class="p mono">${esc(f.path)}</span><span class="n mono">+${f.add || 0} −${f.del || 0}</span><span class="bar"><span class="a" style="width:${(100 * (f.add || 0)) / maxLines}%"></span><span class="d" style="width:${(100 * (f.del || 0)) / maxLines}%"></span></span></li>`).join("")}</ul>` : ""}
+
+      ${jr.length ? `<h3>Journal</h3><ul class="journal">${jr.slice(0, 20).map((j) => `<li><span class="when">${fmtTime(j.ts)}</span><span class="kind" style="color:${(KIND[j.kind] || [0, "var(--ink-2)"])[1]}">${esc((KIND[j.kind] || [j.kind])[0])}</span><span class="det open">${j.arm_id && j.arm_id !== id ? `<span class="mono">${esc(j.arm_id)}</span> ` : ""}${esc(j.detail)}</span></li>`).join("")}</ul>` : ""}
+    </div>`;
+  drawViewer(a, parent);
+  $("#drawer .close").addEventListener("click", closeArm);
+  $("#drawer").querySelectorAll("[data-arm]").forEach((b) => b.addEventListener("click", () => openArm(b.dataset.arm)));
+  $("#drawer").classList.add("on");
+  $("#drawer").setAttribute("aria-hidden", "false");
+  $("#scrim").classList.add("on");
+  if (!quiet) { $("#drawer").scrollTop = 0; $("#drawer .close").focus({ preventScroll: true }); }
+}
+function closeArm() {
+  SEL = null;
+  history.replaceState(null, "", `#${SP}`);
+  $("#drawer").classList.remove("on");
+  $("#drawer").setAttribute("aria-hidden", "true");
+  $("#scrim").classList.remove("on");
+  document.querySelectorAll(".lane-hit.sel").forEach((n) => n.classList.remove("sel"));
+}
+
+function drawViewer(a, parent) {
+  const box = $("#viewer");
+  const mine = shotsOf(a.arm_id);
+  if (!mine.length) {
+    box.innerHTML = `<p class="empty">${a.status === "stillborn" ? "This mutant was rejected before it was ever deployed, so there is nothing to photograph." : "No photos: this mutant lived before photos were added to the loop."}</p>`;
+    return;
+  }
+  const pages = [...new Set(mine.map((m) => m.page))];
+  const pick = (arm, page, vp) => shotsOf(arm).find((m) => m.page === page && m.viewport === vp);
+  const cur = pick(a.arm_id, viewer.page, viewer.viewport) || pick(a.arm_id, viewer.page, "desktop") || mine[0];
+  const theirs = parent && pick(parent.arm_id, cur.page, cur.viewport);
+  const mode = theirs ? viewer.mode : "this";
+  const segBtn = (key, val, label) => `<button type="button" data-k="${key}" data-v="${esc(val)}" aria-pressed="${viewer[key] === val || (key === "mode" && mode === val)}">${esc(label)}</button>`;
+  box.innerHTML = `<div class="viewer-controls">
+      ${pages.length > 1 ? `<span class="seg">${pages.map((p) => segBtn("page", p, p)).join("")}</span>` : ""}
+      <span class="seg">${segBtn("viewport", "desktop", "Desktop")}${segBtn("viewport", "mobile", "Phone")}</span>
+      ${theirs ? `<span class="seg">${segBtn("mode", "this", "This mutant")}${segBtn("mode", "compare", "Compare with parent")}</span>` : ""}
+    </div>
+    <div class="viewer ${cur.viewport}">
+      ${mode === "compare"
+        ? `<div class="cmp"><img src="${mediaUrl(cur)}" alt="${esc(a.arm_id)} ${esc(cur.page)}"><div class="top" style="clip-path:inset(0 ${100 - viewer.split}% 0 0)"><img src="${mediaUrl(theirs)}" alt="${esc(parent.arm_id)} ${esc(cur.page)}"></div><div class="cmp-bar" style="left:${viewer.split}%"></div></div>`
+        : `<img src="${mediaUrl(cur)}" alt="${esc(a.arm_id)} ${esc(cur.page)}">`}
+    </div>
+    ${mode === "compare" ? `<input class="cmp-range" type="range" min="0" max="100" value="${viewer.split}" aria-label="Slide between parent and this mutant"><div class="cmp-labels"><span>Parent <span class="mono">${esc(parent.arm_id)}</span> on the left</span><span>This mutant on the right</span></div>` : ""}`;
+  box.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => { viewer[b.dataset.k] = b.dataset.v; drawViewer(a, parent); }));
+  const range = $(".cmp-range", box);
+  if (range) range.addEventListener("input", () => {
+    viewer.split = +range.value;
+    $(".cmp .top", box).style.clipPath = `inset(0 ${100 - viewer.split}% 0 0)`;
+    $(".cmp-bar", box).style.left = viewer.split + "%";
+  });
+}
+
+// ---------- routing ----------
+function route() {
+  const [sp, arm] = location.hash.replace(/^#/, "").split("/");
+  if (!D || (sp && sp !== SP)) { SEL = arm || null; load(sp || null, true); return; }
+  if (arm && arm !== SEL) openArm(arm, true);
+  if (!arm && SEL) closeArm();
+}
+window.addEventListener("hashchange", route);
+$("#species").addEventListener("click", (e) => {
+  const a = e.target.closest("a[data-sp]");
+  if (!a) return;
+  e.preventDefault();
+  SEL = null;
+  closeArm();
+  location.hash = a.dataset.sp;
+});
+$("#main").addEventListener("click", (e) => { const b = e.target.closest(".link-arm"); if (b) openArm(b.dataset.arm); });
+$("#scrim").addEventListener("click", closeArm);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && SEL) closeArm(); });
+$("#refresh").addEventListener("click", () => load(SP, true));
+let rT;
+window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(() => D && render(), 200); });
+setInterval(() => { if (!document.hidden && !SEL) load(SP, true); }, 5 * 60 * 1000);
+route();
+</script>
+</body>
+</html>

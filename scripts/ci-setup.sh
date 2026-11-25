@@ -14,6 +14,10 @@ if [ -n "${CODEX_AUTH_JSON:-}" ]; then
   sha256sum ~/.codex/auth.json | cut -d' ' -f1 > "$WORK/.tmp/codex-auth.sha"
 fi
 
+# Browser + ffmpeg for the lab's photos and scroll videos of each mutant (best effort).
+npx playwright install --with-deps chromium >/dev/null 2>&1 || echo "::warning::playwright browser install failed; mutants won't be photographed"
+command -v ffmpeg >/dev/null || sudo apt-get install -y -qq ffmpeg >/dev/null 2>&1 || echo "::warning::ffmpeg missing; no scroll videos"
+
 git config --global user.name "darwinian"
 git config --global user.email "evolve@darwinian.local"
 git config --global url."https://x-access-token:${DW_GH_TOKEN}@github.com/".insteadOf "https://github.com/"

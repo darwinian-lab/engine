@@ -14,6 +14,7 @@ import { decide, mutationSize, DEFAULTS } from "./lib/select.mjs";
 import { gate } from "./lib/gates.mjs";
 import { mutationPrompt, repairPrompt, auditPrompt, auditFixPrompt, personaPrompt } from "./lib/prompts.mjs";
 import { run, must, expand, rid, log, lock, extractJson, readJson, stripHtml } from "./lib/util.mjs";
+import { capture, storeMedia } from "./lib/shots.mjs";
 
 // In GitHub Actions, surface fatal errors as annotations (readable without opening the log).
 const annotate = (e) => {
@@ -71,6 +72,73 @@ async function codex(promptText, tag) {
   fs.rmSync(promptFile, { force: true });
   fs.rmSync(out, { force: true });
   return extractJson(text);
+}
+
+// Lab schema (migrations/0002_lab.sql) is applied idempotently on every run.
+async function ensureSchema() {
+  const file = new URL("../migrations/0002_lab.sql", import.meta.url);
+  const sql = fs.readFileSync(file, "utf8").replace(/--.*$/gm, "");
+  for (const stmt of sql.split(";").map((x) => x.trim()).filter(Boolean)) {
+    try {
+      await db.run(stmt);
+    } catch (e) {
+      if (!/duplicate column/i.test(e.message)) log(`schema: ${e.message.slice(0, 200)}`);
+    }
+  }
+}
+
+/** git diff --numstat → [{path, add, del}] */
+function numstat(out) {
+  return out
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => {
+      const [a, d, ...p] = l.split("\t");
+      return { path: p.join("\t"), add: Number(a) || 0, del: Number(d) || 0 };
+    })
+    .slice(0, 80);
+}
+
+/** Photograph a deployed arm for the lab. Never fails the caller. */
+async function photograph(sp, armId, origin) {
+  if (DRY || !origin) return;
+  try {
+    const dir = path.join(cfg.workdir, ".tmp", "shots", `${sp.id}-${armId}`);
+    const items = await capture({ origin, routerKey: cfg.routerKey, pages: sp.screenPages ?? ["/"], outDir: dir });
+    const n = await storeMedia(db, sp.id, armId, items);
+    await db.run("UPDATE arms SET shot_at=? WHERE species=? AND arm_id=?", [now(), sp.id, armId]);
+    fs.rmSync(dir, { recursive: true, force: true });
+    log(`[${sp.id}] photographed ${armId}: ${n} files`);
+  } catch (e) {
+    log(`[${sp.id}] photographing ${armId} failed: ${e.message}`);
+  }
+}
+
+/** Mutants that never lived still belong in the fossil record (status 'stillborn'). */
+async function stillborn(sp, armId, parent, st, cause, extra = {}) {
+  if (DRY) return;
+  await db.run(
+    `INSERT OR IGNORE INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at, retired_at, cause, mutation, size, diffstat, audit, personas, shot_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [sp.id, armId, "", "stillborn", st.generation + 1, parent.arm_id, null, (extra.mutation ?? "").split("\n").filter(Boolean).slice(0, 3).join(" ").slice(0, 600), now(), now(), cause.slice(0, 1500),
+      extra.mutation ?? null, extra.size ?? null, extra.diffstat ? JSON.stringify(extra.diffstat) : null, extra.audit ? JSON.stringify(extra.audit) : null,
+      extra.personas ? JSON.stringify(extra.personas) : null, extra.shot ? now() : null],
+  ).catch((e) => log(`stillborn record failed: ${e.message}`));
+}
+
+/** Fill in lab details for arms born before the lab recorded them; photograph living arms without photos. */
+async function backfill(sp, repo) {
+  if (DRY) return;
+  const missing = await db.all("SELECT arm_id, git_ref FROM arms WHERE species=? AND mutation IS NULL AND git_ref LIKE 'fossil/%'", [sp.id]);
+  for (const a of missing) {
+    const body = await run("git", ["log", "-1", "--format=%B", a.git_ref], { cwd: repo });
+    if (body.code !== 0) continue;
+    const mutation = body.out.replace(/\r/g, "").split("\n").slice(1).join("\n").trim() || body.out.trim();
+    const ns = await run("git", ["diff", "--numstat", `${a.git_ref}^`, a.git_ref], { cwd: repo });
+    await db.run("UPDATE arms SET mutation=?, diffstat=? WHERE species=? AND arm_id=?", [mutation, JSON.stringify(numstat(ns.out)), sp.id, a.arm_id]);
+  }
+  const unshot = await db.all("SELECT arm_id, origin FROM arms WHERE species=? AND status IN ('live','champion','control') AND shot_at IS NULL AND origin != ''", [sp.id]);
+  for (const a of unshot) await photograph(sp, a.arm_id, a.origin);
 }
 
 async function fetchText(origin, p) {
@@ -144,7 +212,7 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
 
     const stage = species.stages[Math.min(st.stage, species.stages.length - 1)];
     const lineage = await db.all(
-      "SELECT * FROM arms WHERE species=? AND status NOT IN ('control') ORDER BY created_at DESC LIMIT 25",
+      "SELECT * FROM arms WHERE species=? AND status NOT IN ('control','stillborn') ORDER BY created_at DESC LIMIT 25",
       [sp.id],
     );
     const prompt = mutationPrompt({
@@ -176,8 +244,11 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
       await claude(wt, repairPrompt(g.failure), cfg.models.repair);
       g = await gate(wt, ref, species);
     }
+    const mutationSoFar = () => (fs.existsSync(path.join(wt, "MUTATION.md")) ? fs.readFileSync(path.join(wt, "MUTATION.md"), "utf8") : null);
+    const stagedStat = async () => numstat((await run("git", ["diff", "--cached", "--numstat", ref], { cwd: wt })).out);
     if (!g.ok) {
       await journal(sp.id, "reject", armId, `failed gates: ${g.failure.slice(0, 1500)}`);
+      await stillborn(sp, armId, parent, st, `failed the build/test gates: ${g.failure.slice(0, 600)}`, { mutation: mutationSoFar(), size, diffstat: await stagedStat() });
       return null;
     }
 
@@ -188,7 +259,9 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
       return codex(auditPrompt({ charter: fs.readFileSync(path.join(wt, "CHARTER.md"), "utf8"), diff, mutation: mutationText }), "audit");
     };
     let audit = await runAudit();
+    const auditRounds = [];
     if (audit && audit.verdict !== "pass" && (audit.violations ?? []).length) {
+      auditRounds.push(audit.violations);
       ghNotice(`${sp.id} ${armId} audit round 1`, JSON.stringify(audit.violations));
       await claude(wt, auditFixPrompt(audit.violations), cfg.models.repair);
       g = await gate(wt, ref, species);
@@ -196,6 +269,9 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
     }
     if (!audit || audit.verdict !== "pass") {
       await journal(sp.id, "reject", armId, `audit ${audit ? "failed" : "unavailable"}: ${JSON.stringify(audit?.violations ?? []).slice(0, 1500)}`);
+      await stillborn(sp, armId, parent, st, `rejected by the independent audit: ${(audit?.violations ?? ["auditor unavailable"]).join("; ").slice(0, 900)}`, {
+        mutation: mutationSoFar(), size, diffstat: await stagedStat(), audit: { summary: audit?.summary ?? null, notes: audit?.notes ?? [], rounds: auditRounds },
+      });
       return null;
     }
     const mutation = fs.readFileSync(path.join(wt, "MUTATION.md"), "utf8");
@@ -203,6 +279,8 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
     await must("git", ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local", "commit", "-q", "-m", `${armId}: ${mutation.split("\n")[0].replace(/^#\s*/, "")}\n\n${mutation}`], { cwd: wt });
     const tag = `fossil/${sp.id}/${armId}`;
     await must("git", ["tag", tag], { cwd: wt });
+    const diffstat = numstat((await run("git", ["diff", "--numstat", "HEAD^", "HEAD"], { cwd: wt })).out);
+    const auditInfo = { summary: audit.summary ?? null, notes: audit.notes ?? [], rounds: auditRounds };
     if (DRY) {
       log(`[${sp.id}] dry-run: ${armId} passed gates + audit; not deploying`);
       return null;
@@ -220,6 +298,8 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
       if (r && r.status !== 404 && r.status < 500) break;
       await new Promise((res) => setTimeout(res, 5000));
     }
+    // Photos for the lab, taken before the persona screen so rejected mutants are on record too.
+    await photograph(sp, armId, origin);
     // Persona screen: compare the child's key pages against its parent's.
     const pages = sp.screenPages ?? ["/", "/pricing"];
     const parentText = (await Promise.all(pages.map((p) => fetchText(parent.origin, p)))).join("\n");
@@ -228,7 +308,9 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
     const votes = personas?.votes ?? [];
     const strongNo = votes.filter((v) => v.prefers === "A" && v.strength >= 4).length;
     if (personas?.broken || (votes.length >= 3 && strongNo === votes.length)) {
-      await journal(sp.id, "reject", armId, `persona screen: ${personas?.broken ? "broken: " + personas.broken_reason : "all personas strongly preferred the parent"}`);
+      const why = `persona screen: ${personas?.broken ? "broken: " + personas.broken_reason : "all personas strongly preferred the parent"}`;
+      await journal(sp.id, "reject", armId, why);
+      await stillborn(sp, armId, parent, st, why, { mutation, size, diffstat, audit: auditInfo, personas: votes, shot: true });
       await deleteWorker(name);
       return null;
     }
@@ -236,8 +318,11 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
     await must("git", ["push", "-q", "origin", `arm/${armId}`, tag], { cwd: wt });
     const hypothesis = mutation.replace(/\r/g, "").split("\n").filter(Boolean).slice(0, 3).join(" ").slice(0, 600);
     await db.run(
-      "INSERT INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-      [sp.id, armId, origin, "live", st.generation + 1, parent.arm_id, tag, hypothesis, now()],
+      `INSERT INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at, mutation, size, diffstat, audit, personas, shot_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(species, arm_id) DO UPDATE SET origin=excluded.origin, status='live', git_ref=excluded.git_ref, hypothesis=excluded.hypothesis,
+         mutation=excluded.mutation, size=excluded.size, diffstat=excluded.diffstat, audit=excluded.audit, personas=excluded.personas`,
+      [sp.id, armId, origin, "live", st.generation + 1, parent.arm_id, tag, hypothesis, now(), mutation, size, JSON.stringify(diffstat), JSON.stringify(auditInfo), JSON.stringify(votes), now()],
     );
     await journal(sp.id, "spawn", armId, `${size} mutation of ${parent.arm_id}: ${audit.summary ?? ""} | personas: ${votes.map((v) => `${v.prefers}${v.strength}`).join(" ")}`);
     log(`[${sp.id}] ${armId} is alive at ${origin}`);
@@ -298,6 +383,7 @@ async function cycle(sp) {
   const species = JSON.parse(fs.readFileSync(path.join(repo, "species.json"), "utf8"));
   const brief = fs.existsSync(path.join(repo, "BRIEF.md")) ? fs.readFileSync(path.join(repo, "BRIEF.md"), "utf8") : species.brand.tagline;
   await db.run("INSERT INTO species_config (species, json, updated_at) VALUES (?,?,?) ON CONFLICT(species) DO UPDATE SET json=excluded.json, updated_at=excluded.updated_at", [sp.id, JSON.stringify(species), now()]);
+  await backfill(sp, repo).catch((e) => log(`[${sp.id}] backfill failed: ${e.message}`));
   let st = await db.first("SELECT * FROM species_state WHERE species=?", [sp.id]);
   if (!st) {
     await db.run("INSERT INTO species_state (species, stage, generation, updated_at) VALUES (?,?,?,?)", [sp.id, 0, 0, now()]);
@@ -320,6 +406,13 @@ async function cycle(sp) {
   const stats = Object.fromEntries(statRows.map((r) => [r.arm_id, r]));
   const weekly = (await db.first("SELECT COUNT(DISTINCT visitor) n FROM events WHERE species=? AND name='js_seen' AND ts>?", [sp.id, now() - 7 * 86400_000]))?.n ?? 0;
   const dec = decide(arms, stats, weekly, now(), { ...DEFAULTS, ...cfg.selection, population: species.population ?? 3 });
+  if (!DRY && Object.keys(dec.pb ?? {}).length) {
+    const ids = Object.keys(dec.pb);
+    await db.run(
+      `INSERT INTO pb_history (ts, species, arm_id, pbest, trials, successes) VALUES ${ids.map(() => "(?,?,?,?,?,?)").join(",")}`,
+      ids.flatMap((id) => [now(), sp.id, id, dec.pb[id], stats[id]?.trials ?? 0, stats[id]?.successes ?? 0]),
+    ).catch((e) => log(`pb history: ${e.message}`));
+  }
   ghNotice(`${sp.id} cycle`, `stage ${st.stage}, gen ${st.generation}, ${arms.length} evolving, ${weekly} visitors/wk, spawn ${dec.spawn}`);
   log(`[${sp.id}] stage ${st.stage}, gen ${st.generation}, ${arms.length} evolving arms, ${weekly} visitors/wk → population ${dec.population}, promote ${dec.promote ?? "-"}, retire ${dec.retire.length}, spawn ${dec.spawn}`);
 
@@ -381,6 +474,7 @@ try {
     const seen = await db.first("SELECT id FROM journal WHERE kind='reminder' AND detail=? AND ts>?", [r.text, Date.now() - 86400_000]);
     if (!seen) await journal(null, "reminder", null, r.text);
   }
+  await ensureSchema();
   const only = argv("--species");
   for (const sp of cfg.species.filter((s) => !only || s.id === only)) {
     try {
