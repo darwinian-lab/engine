@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { run, rid, log, extractJson } from "./util.mjs";
+import { run, rid, log, extractJson, limitHit } from "./util.mjs";
 import { simPrompt } from "./prompts.mjs";
 import { claudeStream } from "./stream.mjs";
 
@@ -126,7 +126,7 @@ export async function runSession({ cfg, db, sp, stageEvent, arm, persona }) {
         budget: s.actionsPerPhase ?? 25,
       });
       const r = await agent(cfg, prompt, profileDir, device, base, `${sp.id} sim ${persona.id}@${arm.arm_id} ${i + 1}/${persona.phases.length}`);
-      if (/hit your [\w -]*limit/i.test(r.out + r.err) || (r.code !== 0 && /usage limit|rate.?limit|limit reached|quota|credit balance/i.test(r.out + r.err))) {
+      if (limitHit({ out: r.text ?? r.out, err: r.err, code: r.code })) {
         throw new SimRateLimited((r.out + r.err).slice(-300));
       }
       const j = extractJson(r.text) ?? { done: false, gave_up: `agent returned no report (exit ${r.code}): ${(r.err || r.text).slice(-200)}` };

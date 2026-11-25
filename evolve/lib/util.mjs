@@ -129,3 +129,14 @@ export const stripHtml = (h) =>
     .replace(/&[a-z#0-9]+;/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+/**
+ * Did an agent stop because the account hit its usage limit? Only the agent's final message (Claude prints
+ * "You've hit your 5-hour limit · resets …" as its whole answer) or its error stream count; an agent's normal
+ * answer may well mention "rate limits" or "quota" as part of the work.
+ */
+export function limitHit({ out = "", err = "", code = 0 }) {
+  const msg = /^\s*(you['’]ve hit your [\w -]*limit|claude ai usage limit reached|usage limit reached)/i;
+  if (msg.test(out.trim().slice(0, 200))) return true;
+  return code !== 0 && /hit your [\w -]*limit|usage limit|rate.?limit|limit reached|quota|credit balance/i.test(err.slice(-2000));
+}

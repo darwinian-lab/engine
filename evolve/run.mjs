@@ -18,7 +18,7 @@ import { pickRevivals, isRevivable } from "./lib/seeds.mjs";
 import { ensureLabels, listIssues, backlogText, applyCuration, createIssue, comment, closeIssue, parseImplements } from "./lib/issues.mjs";
 import { ENGINE_DIR } from "./lib/config.mjs";
 import { makePipeline } from "./pipeline.mjs";
-import { run, must, expand, rid, log, lock, extractJson, readJson, stripHtml } from "./lib/util.mjs";
+import { run, must, expand, rid, log, lock, extractJson, readJson, stripHtml, limitHit } from "./lib/util.mjs";
 import { capture, storeMedia } from "./lib/shots.mjs";
 
 // In GitHub Actions, surface fatal errors as annotations (readable without opening the log).
@@ -86,7 +86,7 @@ async function claude(wt, promptText, model) {
   });
   const r = await run(cmd[0], cmd.slice(1), { cwd: wt, timeoutMs: (cfg.timeouts?.mutateMin ?? 40) * 60_000, agent: true, echoPrefix: `[${path.basename(wt)} claude]` });
   const text = r.out + r.err;
-  if (/hit your [\w -]*limit/i.test(text) || (/rate.?limit|usage limit|limit reached|quota/i.test(text) && r.code !== 0)) throw new RateLimited(text.slice(-500));
+  if (limitHit(r)) throw new RateLimited(text.slice(-500));
   return r;
 }
 

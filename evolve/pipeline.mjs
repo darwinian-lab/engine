@@ -3,7 +3,7 @@
 // (promotion) or closes (death) the PRs. No human anywhere.
 import fs from "node:fs";
 import path from "node:path";
-import { run, must, rid, log, extractJson } from "./lib/util.mjs";
+import { run, must, rid, log, extractJson, limitHit } from "./lib/util.mjs";
 import { claudeStream } from "./lib/stream.mjs";
 import { gate } from "./lib/gates.mjs";
 import { hypothesisPrompt, buildPrompt, prReviewPrompt, addressPrompt, auditPrompt, repairPrompt, lessonsPrompt } from "./lib/prompts.mjs";
@@ -18,7 +18,6 @@ export function makePipeline(d) {
   const { cfg, db, journal, ghNotice, DRY, codex, deployArm, deleteWorker, photograph, stillborn, numstat, gitLock, RateLimited, now, cfEnv } = d;
   const gh = (args, opts = {}) => run("gh", args, { timeoutMs: 120_000, ...opts });
 
-  const LIMIT_RE = /hit your [\w -]*limit|usage limit|rate.?limit|limit reached|quota|credit balance/i;
 
   /** A Claude Code agent with no secrets in its environment. */
   async function agent({ cwd, prompt, model, tools, browser = false, web = false, minutes = 30, json = false, label = "agent", resume = null, onSession = null }) {
@@ -41,7 +40,7 @@ export function makePipeline(d) {
     // Each agent gets its own local dev-server port so parallel builders don't collide.
     const r = await claudeStream({ args, cwd, label, onSession, timeoutMs: minutes * 60_000, transcriptDir: path.join(cfg.workdir, ".tmp", "transcripts"), env: { DW_DEV_PORT: String(8800 + Math.floor(Math.random() * 900)) } });
     const text = r.out + r.err;
-    if (LIMIT_RE.test(r.out) || (r.code !== 0 && LIMIT_RE.test(text))) throw new RateLimited(text.slice(-500));
+    if (limitHit(r)) throw new RateLimited(text.slice(-500));
     return json ? extractJson(r.out) : r;
   }
 
@@ -51,6 +50,14 @@ export function makePipeline(d) {
 
   const commitsOf = async (wt, base, head) => (await run("git", ["log", "--format=%h %s", `${base}..${head}`], { cwd: wt })).out.trim();
 
+
+  const chosenThisCycle = new Map();
+  let hypChain = Promise.resolve();
+  const hypLock = (fn) => {
+    const p = hypChain.then(fn, fn);
+    hypChain = p.catch(() => {});
+    return p;
+  };
 
   const CLAUDE_PROJECTS = path.join(process.env.HOME ?? "", ".claude", "projects");
 
@@ -145,7 +152,14 @@ export function makePipeline(d) {
       };
 
       // 1. Hypothesis: what to build and why.
-      const hyp = wip.state.hyp ?? await agent({ label: `${sp.id}/${armId} hypothesis`, cwd: wt, prompt: hypothesisPrompt({ ...ctx.promptCtx, size }), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 15, json: true });
+      // Hypotheses are chosen one at a time per species so siblings bred in the same cycle pick different ideas.
+      const hyp = wip.state.hyp ?? await hypLock(async () => {
+        const taken = (chosenThisCycle.get(sp.id) ?? []).map((h) => `- (this cycle) ${h}`).join("\n");
+        const promptCtx = { ...ctx.promptCtx, size, siblings: [ctx.promptCtx?.siblings, taken].filter(Boolean).join("\n") };
+        const h = await agent({ label: `${sp.id}/${armId} hypothesis`, cwd: wt, prompt: hypothesisPrompt(promptCtx) + (taken ? "\n\nOther mutants of this cycle already took the ideas marked (this cycle) above. Choose a clearly different problem, not a variation of theirs." : ""), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 15, json: true });
+        if (h?.title) chosenThisCycle.set(sp.id, [...(chosenThisCycle.get(sp.id) ?? []), `${h.title}: ${String(h.hypothesis ?? "").slice(0, 200)}`]);
+        return h;
+      });
       if (!hyp?.work_item) {
         await journal(sp.id, "reject", armId, "hypothesis step produced no work item");
         return null;
