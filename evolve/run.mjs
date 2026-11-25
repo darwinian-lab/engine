@@ -544,12 +544,23 @@ async function cycle(sp) {
     }
     if (dec.promote) {
       const winner = arms.find((a) => a.arm_id === dec.promote);
+      // Merge the winner into main normally: main keeps everything already on it (earlier winners, owner updates).
+      await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
+      await must("git", ["checkout", "-q", "main"], { cwd: repo });
+      await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
+      const merged = await run("git", ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local", "merge", "--no-ff", "--no-edit", "-m", `Promote ${winner.arm_id}`, winner.git_ref], { cwd: repo });
+      if (merged.code !== 0) {
+        await run("git", ["merge", "--abort"], { cwd: repo });
+        await journal(sp.id, "note", winner.arm_id, `would have been promoted, but it no longer merges cleanly into main; it stays a challenger and its idea will be re-applied on top of main later`);
+        dec.promote = null;
+      }
+    }
+    if (dec.promote) {
+      const winner = arms.find((a) => a.arm_id === dec.promote);
       await db.run("UPDATE arms SET status='champion', graduated_at=COALESCE(graduated_at, ?) WHERE species=? AND arm_id=?", [now(), sp.id, dec.promote]);
       st.generation += 1;
       await db.run("UPDATE species_state SET generation=?, updated_at=? WHERE species=?", [st.generation, now(), sp.id]);
-      // The champion's code becomes main; every ancestor stays reachable through its fossil/ tag.
-      await must("git", ["reset", "-q", "--hard", winner.git_ref], { cwd: repo });
-      await must("git", ["push", "-q", "--force-with-lease", "origin", "main"], { cwd: repo });
+      await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
       const c = dec.combined[dec.promote];
       await journal(sp.id, "promote", dec.promote, `new champion: P(better than ${champion.arm_id})=${dec.pbeat[dec.promote].toFixed(3)} [${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real]; generation ${st.generation}`);
       if (winner.issue) await closeIssue(repoSlug, winner.issue, `Shipped: mutant \`${winner.arm_id}\` implemented this and became the champion.`).catch(() => {});
