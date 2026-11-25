@@ -23,7 +23,7 @@ jobs:
       - run: npm ci
       - run: scripts/ci-setup.sh
       - name: Simulated users only
-        run: node evolve/run.mjs --sim-only --species "$(jq -r .species ops/simtest.json)" --sims "$(jq -r .sims ops/simtest.json)"
+        run: node evolve/run.mjs --sim-only --species "$(jq -r .species ops/simtest.json)" --sims "$(jq -r .sims ops/simtest.json)" --sim-agent "$(jq -r '.agent // "claude"' ops/simtest.json)"
       - if: always()
         run: scripts/ci-finish.sh
       - if: always()

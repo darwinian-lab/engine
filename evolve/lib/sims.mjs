@@ -71,8 +71,10 @@ async function agent(cfg, prompt, profileDir, device, workDir, label = "sim") {
   if ((s.agent ?? "claude") === "codex") {
     const toml = "[" + args.map((a) => JSON.stringify(a)).join(",") + "]";
     const out = path.join(workDir, `codex-${rid(6)}.txt`);
-    cmd = ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only",
-      "-c", `mcp_servers.browser.command=${JSON.stringify(s.mcpCommand ?? "playwright-mcp")}`, "-c", `mcp_servers.browser.args=${toml}`, "-o", out, prompt];
+    cmd = ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only", "-c", 'approval_policy="never"',
+      ...(s.codexModel ? ["-m", s.codexModel] : []),
+      "-c", `mcp_servers.browser.command=${JSON.stringify(s.mcpCommand ?? "playwright-mcp")}`, "-c", `mcp_servers.browser.args=${toml}`,
+      "-c", "mcp_servers.browser.startup_timeout_sec=60", "-c", "mcp_servers.browser.tool_timeout_sec=120", "-o", out, prompt];
     const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * 60_000, agent: true, echoPrefix: `[${label} codex]` });
     const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : r.out;
     return { ...r, text };

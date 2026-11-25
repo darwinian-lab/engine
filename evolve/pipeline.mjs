@@ -388,9 +388,9 @@ export function makePipeline(d) {
     await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
     const file = path.join(repo, "LESSONS.md");
     const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "# LESSONS.md\n";
-    const r = await run("claude", ["-p", lessonsPrompt({ product: species.brand.name, current, items }), "--model", cfg.models.curate ?? "sonnet", "--output-format", "text"], { cwd: repo, timeoutMs: 10 * 60_000, agent: true, echoPrefix: `[${sp.id} lessons]` });
-    const next = r.out.replace(/^```(?:markdown)?\n|\n```\s*$/g, "").trim();
-    if (r.code !== 0 || !next.startsWith("# LESSONS.md")) return;
+    const text = await d.codexText(lessonsPrompt({ product: species.brand.name, current, items }), `${sp.id}-lessons`).catch(() => "");
+    const next = text.replace(/^```(?:markdown)?\n|\n```\s*$/g, "").trim();
+    if (!next.startsWith("# LESSONS.md")) return;
     fs.writeFileSync(file, next + "\n");
     if (!(await run("git", ["status", "--porcelain", "LESSONS.md"], { cwd: repo })).out.trim()) return;
     await must("git", [...GIT_ID, "commit", "-q", "-m", "Update lessons from this cycle", "LESSONS.md"], { cwd: repo });

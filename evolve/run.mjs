@@ -37,6 +37,7 @@ const argv = (k) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const cfg = loadConfig(args);
+if (argv("--sim-agent")) cfg.sims.agent = argv("--sim-agent");
 if (!cfg.cloudflare.apiToken || !cfg.cloudflare.d1Engine || !cfg.routerKey) {
   console.error("Not configured yet: run bootstrap first (and set the CLOUDFLARE_* / DW_* secrets).");
   process.exit(1);
@@ -92,7 +93,8 @@ async function claude(wt, promptText, model) {
 function codex(promptText, tag) {
   return codexLock(() => codexRaw(promptText, tag));
 }
-async function codexRaw(promptText, tag) {
+/** Codex answers a prompt as plain text (no files touched). Used to spare Claude usage on light tasks. */
+async function codexText(promptText, tag) {
   const out = path.join(cfg.workdir, ".tmp", `codex-${tag}-${rid(6)}.txt`);
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const promptFile = out.replace(/\.txt$/, ".prompt.md");
@@ -102,7 +104,12 @@ async function codexRaw(promptText, tag) {
   const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : r.out;
   fs.rmSync(promptFile, { force: true });
   fs.rmSync(out, { force: true });
-  return extractJson(text);
+  if (r.code !== 0 && !text.trim()) throw new Error(`codex ${tag} failed: ${(r.err || r.out).slice(-300)}`);
+  return text;
+}
+
+async function codexRaw(promptText, tag) {
+  return extractJson(await codexText(promptText, tag));
 }
 
 // Lab schema (migrations/0002_lab.sql) is applied idempotently on every run.
@@ -637,11 +644,10 @@ async function cycle(sp) {
   if (rateLimited || simResults.rateLimited) throw new RateLimited("usage limit");
 }
 
-/** Sonnet turns simulated feedback into backlog actions. */
+/** Codex turns simulated feedback into backlog actions. */
 async function curate(product, issues, feedback) {
   const dir = path.join(cfg.workdir, ".tmp");
-  const r = await run("claude", ["-p", curatorPrompt({ product, issues, feedback }), "--model", cfg.models.curate ?? "sonnet", "--output-format", "text"], { cwd: dir, timeoutMs: 5 * 60_000, agent: true, echoPrefix: "[backlog curator]" });
-  return extractJson(r.out);
+  return extractJson(await codexText(curatorPrompt({ product, issues, feedback }), "curator"));
 }
 
 /** Once a day: an ideation agent with web search proposes up to two backlog items. */
@@ -658,7 +664,7 @@ async function ideate(sp, species, brief, repoSlug, issues, champion) {
   await journal(sp.id, "ideation", null, ideas.length ? `proposed: ${ideas.map((i) => i.title).join(" | ")}` : "no new ideas");
 }
 
-const pipe = makePipeline({ cfg, db, journal, ghNotice, DRY, codex, deployArm, deleteWorker, photograph, stillborn, numstat, gitLock, RateLimited, now, cfEnv });
+const pipe = makePipeline({ cfg, db, journal, ghNotice, DRY, codex, codexText, deployArm, deleteWorker, photograph, stillborn, numstat, gitLock, RateLimited, now, cfEnv });
 
 const release = lock(path.join(cfg.workdir, ".tmp", "evolve.lock"));
 if (!release) {
