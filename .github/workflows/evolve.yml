@@ -6,6 +6,8 @@ on:
     inputs:
       species: { description: "Only this species (qr, resume, wall)", required: false }
       dry_run: { description: "Dry run (no deploys)", type: boolean, default: false }
+      sim_only: { description: "Only run simulated users (no breeding/selection)", type: boolean, default: false }
+      sims: { description: "Number of simulated sessions per species (overrides settings)", required: false }
 concurrency: { group: evolve, cancel-in-progress: false }
 permissions: { contents: write }
 jobs:
@@ -19,6 +21,7 @@ jobs:
       CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
       DW_GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
       DW_LAB_KEY: ${{ secrets.DW_LAB_KEY }}
+      GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,6 +33,8 @@ jobs:
           ARGS=""
           [ -n "${{ inputs.species }}" ] && ARGS="$ARGS --species ${{ inputs.species }}"
           [ "${{ inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
+          [ "${{ inputs.sim_only }}" = "true" ] && ARGS="$ARGS --sim-only"
+          [ -n "${{ inputs.sims }}" ] && ARGS="$ARGS --sims ${{ inputs.sims }}"
           node evolve/run.mjs $ARGS
       - if: always()
         run: scripts/ci-finish.sh

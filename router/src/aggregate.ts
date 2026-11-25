@@ -22,7 +22,7 @@ export async function aggregate(env: Env) {
   const rows = await env.DB.prepare(
     `WITH seen AS (
        SELECT DISTINCT arm_id, visitor, segment FROM events
-       WHERE species = ?1 AND name = 'js_seen' AND ts > ?2
+       WHERE species = ?1 AND name = 'js_seen' AND ts > ?2 AND segment != 'sim'
      ),
      won AS (
        SELECT DISTINCT arm_id, visitor FROM events

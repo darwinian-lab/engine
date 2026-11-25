@@ -6,7 +6,7 @@ const SIZE_GUIDE = {
   large: "LARGE: a bold capability that could change the product's trajectory (e.g. accounts, a paid tier with checkout, a new format). Keep it coherent and fully working.",
 };
 
-export function mutationPrompt({ species, brief, stage, stageEvent, size, lineage, siblings, insights, protectedFiles }) {
+export function mutationPrompt({ species, brief, stage, stageEvent, size, lineage, siblings, insights, protectedFiles, backlog, simFeedback, revival }) {
   return `# You are a mutation in a Darwinian software experiment
 
 This repository is one product ("${species.brand.name}", ${species.brand.domain}). Several variants of it
@@ -23,6 +23,11 @@ Current fitness stage: **${stage}**. A visitor counts as a success when they gen
 Later stages reward deeper value (sign-ups, then revenue). Measurement happens in the router from real requests;
 you cannot and must not influence it except by making the product better for real people.
 
+Until there are enough real visitors, simulated people also judge you: AI agents with realistic personas use the
+site in real browsers (phones and laptops), try to get a real job done, sometimes come back days later on another
+device, and report where they got stuck and what they wished for. They succeed only if they get the job done,
+the router sees it happen, and they are genuinely happy with it. You cannot see or detect them; just build for people.
+
 ## What we know from previous generations (lineage memory)
 ${lineage || "Nothing yet: this is one of the first mutations."}
 
@@ -31,6 +36,24 @@ ${siblings || "None."}
 
 ## Observed behaviour (insight events and pages)
 ${insights || "No data yet."}
+
+## What simulated people said about the current parent (recent sessions)
+${simFeedback || "No simulated sessions yet."}
+
+## The backlog (feature requests and problems; owner requests first)
+${backlog || "Empty."}
+You may implement one backlog item (say so in MUTATION.md) or pursue your own hypothesis.${revival ? `
+
+## THIS IS A REVIVAL
+An earlier mutant tried the idea below and died (cause: ${revival.cause}). Conditions have changed since then
+(new champion code, ${revival.generations} generation(s) later). Re-introduce the SAME idea on top of the current code,
+adapting it to what the code looks like now and fixing whatever made it fail if the cause suggests a fix.
+
+### Its MUTATION.md
+${revival.mutation}
+
+### Its original diff (for reference; the code has moved on, do not apply blindly)
+${revival.diff ? revival.diff.slice(0, 30000) : "(not kept: it never reached deployment)"}` : ""}
 
 ## Your mutation
 Size: ${SIZE_GUIDE[size]}
@@ -46,6 +69,7 @@ Size: ${SIZE_GUIDE[size]}
 6. Finally write MUTATION.md (overwrite it) in exactly this format:
 
    # <short title, max 8 words>
+   **Implements:** #<issue number>   (only if you implemented a backlog item; omit the line otherwise)
    **Hypothesis:** <one or two sentences: what you changed and why it should help real visitors>
    **Changes:** <bullet list>
    **Expected effect:** <which behaviour should go up>
@@ -122,4 +146,78 @@ ${childText.slice(0, 12000)}
 Answer with ONLY a JSON object:
 {"votes":[{"persona":1,"prefers":"A"|"B"|"same","strength":1-5,"why":"..."}, ...3 items],"broken":true|false,"broken_reason":"..."}
 Set broken=true only if version B looks broken, empty, garbled or unusable.`;
+}
+
+
+export function simPrompt({ persona, phase, actor, device, url, memory, received, email, budget }) {
+  return `You are role-playing a real person using a website, in a real browser you control through the browser tools.
+Stay in character the whole time. You are NOT a tester or a developer.
+
+## Who you are
+${actor ? actor + "." : persona.who}
+${actor ? "(This is a different person from the site owner in earlier steps.)" : ""}
+Device: ${device === "mobile" ? "a phone" : "a laptop"}.
+
+## Situation (${phase.label})
+${phase.task}
+${memory ? `\nWhat you remember or have from before:\n${memory}` : ""}${received ? `\nMessage you received:\n${received}` : ""}
+
+## Start here
+Open ${url}
+
+## How to behave
+- Act like this person would: read what they would read, click what they would click, give up when they would give up.
+  Realistic patience: about ${budget} actions for this step at most.
+- Never open developer tools, view page source, or type URLs a normal person couldn't know. Using links the site
+  shows you, or ones you were given, is fine. Searching the web is not available.
+- When you need personal details, invent realistic ones. Use the email ${email} if an email is needed.
+  If a verification code is ever asked for, try 424242.
+- Do not pay for anything.
+
+## When you are finished (or give up)
+Reply with ONLY this JSON, nothing else:
+{"done": true|false, "gave_up": "reason, or empty", "stuck": ["specific moments you were confused or blocked"],
+ "wishes": ["things you wished the site did or had"], "liked": ["things that worked well"], "rating": 1-5,
+ "remember": "what you would realistically remember or still have next time (including any links you saved)",
+ "share": "exactly what you would send to someone else, if anything (e.g. a link with a short message)",
+ "summary": "2-3 sentences in first person about how it went"}`;
+}
+
+export function curatorPrompt({ product, issues, feedback }) {
+  return `You maintain the feature-request backlog of "${product}". Simulated users just used the site and reported
+problems and wishes. Turn them into backlog actions.
+
+## Open issues
+${issues.map((i) => `#${i.number} [${(i.labels || []).join(",")}] ${i.title}`).join("\n") || "(none)"}
+
+## New feedback (persona: item)
+${feedback.join("\n")}
+
+Rules: merge duplicates; if an item matches an open issue, upvote that issue instead of creating a new one;
+create at most 3 new issues, only for items that are specific and would clearly help real users; ignore vague or
+one-off complaints. Titles are short and user-centred ("Let me get back to my wall from another device").
+
+Answer with ONLY JSON:
+{"actions":[{"op":"create","title":"...","body":"problem, who hit it, suggested direction"},{"op":"upvote","number":12,"note":"who hit it and how"}]}`;
+}
+
+export function ideationPrompt({ product, brief, pages, issues, probes }) {
+  return `You are the product strategist of "${product}", a self-evolving website. Propose new ideas for its backlog.
+
+## Brief
+${brief.slice(0, 4000)}
+
+## The site today (text of key pages)
+${pages.slice(0, 12000)}
+
+## Open backlog
+${issues.map((i) => `#${i.number} ${i.title}`).join("\n") || "(none)"}
+
+## AI-search probes (what assistants recommend instead of us)
+${probes || "(none)"}
+
+Use web search to look at what competitors offer and what people ask for. Propose at most 2 ideas that are NOT
+already in the backlog, are honest (no dark patterns), could be built without paid external services, and would
+make real visitors more likely to succeed or come back. Answer with ONLY JSON:
+{"ideas":[{"title":"...","body":"why, evidence (with source URLs), what to build"}]}`;
 }

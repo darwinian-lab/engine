@@ -15,6 +15,7 @@ export interface Env {
   LAB_KEY: string; // owner's read-only dashboard key
   GH_DISPATCH_TOKEN?: string; // set on one router only: it is the experiment's clock
   DISPATCH_REPO?: string;
+  EVOLVE_EVERY_H?: string;
 }
 
 const BOT_RE =
@@ -22,7 +23,8 @@ const BOT_RE =
 const YEAR = 60 * 60 * 24 * 365;
 
 interface State {
-  arms: Arm[];
+  arms: Arm[]; // arms that real visitors may be assigned to
+  all: Arm[]; // ...plus nursery arms, reachable only by simulated users
   stats: ArmStat[];
   cfg: SpeciesConfig | null;
   loadedAt: number;
@@ -33,7 +35,7 @@ async function state(env: Env): Promise<State> {
   if (cache && Date.now() - cache.loadedAt < 30_000) return cache;
   const [arms, stats, cfgRow] = await Promise.all([
     env.DB.prepare(
-      "SELECT arm_id, status, origin FROM arms WHERE species = ? AND status IN ('live','control','champion')",
+      "SELECT arm_id, status, origin FROM arms WHERE species = ? AND status IN ('live','control','champion','nursery')",
     )
       .bind(env.SPECIES)
       .all<Arm>(),
@@ -47,7 +49,8 @@ async function state(env: Env): Promise<State> {
       .first<{ json: string }>(),
   ]);
   cache = {
-    arms: arms.results,
+    arms: arms.results.filter((a) => a.status !== "nursery"),
+    all: arms.results,
     stats: stats.results,
     cfg: cfgRow ? (JSON.parse(cfgRow.json) as SpeciesConfig) : null,
     loadedAt: Date.now(),
@@ -140,6 +143,41 @@ async function handleBeacon(req: Request, env: Env, ctx: ExecutionContext): Prom
   return new Response(null, { status: 204 });
 }
 
+/** Token that marks a simulated user's browser (derived from the router key; the evolve loop does the same). */
+export async function simToken(routerKey: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(routerKey), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("dw-sim"));
+  return Array.from(new Uint8Array(sig), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// A simulated user (from the evolve loop) browsing a specific arm, including nursery arms.
+// Their events are logged with segment 'sim' and never count as real visitors.
+async function simulated(req: Request, env: Env, ctx: ExecutionContext, st: State, c: Record<string, string>): Promise<Response> {
+  const url = new URL(req.url);
+  const arm = st.all.find((a) => a.arm_id === c.dw_arm);
+  if (!arm) return new Response("This simulated session's arm is gone.", { status: 410 });
+  const visitor = c.dw_vid || "sim-unknown";
+  const res = await proxy(req, arm, env, visitor);
+  const isHtml = (res.headers.get("content-type") ?? "").includes("text/html");
+  const tasks: Promise<unknown>[] = [];
+  const log = (name: string) => tasks.push(logEvent(env, { arm: arm.arm_id, visitor, segment: "sim", name, path: url.pathname }));
+  if (res.status >= 500) log("http_5xx");
+  else if (isHtml && req.method === "GET") log("pageview");
+  if (st.cfg) for (const rule of matchEvents(st.cfg, req.method, url, res.status)) log(rule.name);
+  const credit = res.headers.get("x-dw-credit");
+  if (credit && st.cfg) {
+    const [name, owner] = credit.split(":");
+    if (owner?.startsWith("sim-") && st.cfg.events.some((r) => r.credit === "header" && r.name === name)) {
+      tasks.push(logEvent(env, { arm: arm.arm_id, visitor: owner, segment: "sim", name, path: url.pathname }));
+    }
+  }
+  if (tasks.length) ctx.waitUntil(Promise.allSettled(tasks));
+  const out = new Response(res.body, res);
+  out.headers.delete("x-dw-credit");
+  out.headers.set("cache-control", "private, no-store");
+  return out;
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
@@ -158,6 +196,19 @@ export default {
     }
 
     const st = await state(env);
+    // Entry point for simulated users: /_dw/sim?t=<token>&arm=<id>&vid=<id>&next=/path
+    if (url.pathname === "/_dw/sim") {
+      if (!env.ROUTER_KEY || url.searchParams.get("t") !== (await simToken(env.ROUTER_KEY))) return new Response("Not found", { status: 404 });
+      const clean = (v: string | null) => (v ?? "").replace(/[^\w-]/g, "").slice(0, 64);
+      const next = url.searchParams.get("next") ?? "/";
+      const res = new Response(null, { status: 303, headers: { location: next.startsWith("/") && !next.startsWith("//") ? next : "/" } });
+      for (const [k, v] of [["dw_sim", url.searchParams.get("t")!], ["dw_arm", clean(url.searchParams.get("arm"))], ["dw_vid", "sim-" + clean(url.searchParams.get("vid"))]]) {
+        res.headers.append("set-cookie", `${k}=${v}; Path=/; Secure; HttpOnly; SameSite=Lax`);
+      }
+      return res;
+    }
+    const c0 = cookies(req);
+    if (c0.dw_sim && env.ROUTER_KEY && c0.dw_sim === (await simToken(env.ROUTER_KEY))) return simulated(req, env, ctx, st, c0);
     if (st.arms.length === 0) return new Response("Warming up. Please try again shortly.", { status: 503 });
 
     const ua = req.headers.get("user-agent") ?? "";
@@ -244,9 +295,10 @@ export default {
 
   async scheduled(ev: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(aggregate(env));
-    // The heartbeat of evolution: every 3 hours, start one cycle in GitHub Actions.
+    // The heartbeat of evolution: every EVOLVE_EVERY_H hours (default 6), start one cycle in GitHub Actions.
     const t = new Date(ev.scheduledTime);
-    if (env.GH_DISPATCH_TOKEN && t.getUTCHours() % 3 === 0 && t.getUTCMinutes() < 15) {
+    const every = Number(env.EVOLVE_EVERY_H ?? 6) || 6;
+    if (env.GH_DISPATCH_TOKEN && t.getUTCHours() % every === 0 && t.getUTCMinutes() < 15) {
       ctx.waitUntil(
         fetch(`https://api.github.com/repos/${env.DISPATCH_REPO ?? "darwinian-lab/engine"}/actions/workflows/evolve.yml/dispatches`, {
           method: "POST",

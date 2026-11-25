@@ -6,7 +6,8 @@ ORG=$(jq -r .github.org evolve/settings.json)
 WORK=${DW_WORKDIR:-$GITHUB_WORKSPACE/../work}
 mkdir -p "$WORK/.tmp"
 
-npm install -g --silent @anthropic-ai/claude-code @openai/codex wrangler >/dev/null
+npm install -g --silent @anthropic-ai/claude-code @openai/codex wrangler @playwright/mcp@0.0.86 >/dev/null
+command -v google-chrome >/dev/null || echo "::warning::google-chrome missing; simulated users need it"
 
 # Codex login (ChatGPT subscription) comes from a secret; it is written back after the run.
 if [ -n "${CODEX_AUTH_JSON:-}" ]; then

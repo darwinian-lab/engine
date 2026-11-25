@@ -1,0 +1,57 @@
+{
+  "note": "Simulated people for Kudospage. Owned by the engine; mutants never see or edit this file. Each phase runs in a real browser; 'browser: new' means a different device or a cleared browser.",
+  "personas": [
+    {
+      "id": "cafe-owner-phone",
+      "who": "Aylin, 41, runs a small neighbourhood café. Not technical. Uses her phone for everything and has little patience: if something is confusing for more than a minute she gives up.",
+      "device": "mobile",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "You want your happy regulars to leave short reviews you can show on the café's simple website. Set this up so you have a link you could send to customers. Remember whatever you'd need to come back later." },
+        { "label": "a customer, two hours later", "browser": "new", "actor": "Mert, a regular customer of the café, on his own phone", "task": "Aylin sent you a link and asked for a few kind words about the café. Leave a short, honest testimonial (2-3 sentences). You are not willing to create an account for this." },
+        { "label": "two days later", "browser": "same", "task": "Come back to see if anyone left a testimonial, approve the good ones so they are public, and find what you'd paste into your website to show them." }
+      ]
+    },
+    {
+      "id": "returning-other-device",
+      "who": "Daniel, 35, a freelance photographer. Comfortable with tech but busy.",
+      "device": "mobile",
+      "phases": [
+        { "label": "today, on his phone", "browser": "same", "task": "Set up a place to collect testimonials from your photography clients. Do the minimum needed and note what you'd need to get back to it." },
+        { "label": "a week later, on his laptop", "browser": "new", "device": "desktop", "task": "You are now on your laptop (your phone's browser history is not available). Get back into the testimonial wall you created last week to manage it. Use only what you would realistically remember or have." }
+      ]
+    },
+    {
+      "id": "designer-portfolio",
+      "who": "Sofia, 29, freelance brand designer with a Webflow portfolio. Cares a lot about how things look; dislikes clutter and anything that looks cheap.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Create a testimonial wall for your design studio and get the code to embed testimonials on your Webflow site. Judge whether the embed would look good on a minimal portfolio." },
+        { "label": "a client, the next day", "browser": "new", "device": "mobile", "actor": "Jonas, a past client of Sofia, on his phone", "task": "Sofia asked you for a testimonial using the link she sent. Leave one. Include your name and company if the form allows." }
+      ]
+    },
+    {
+      "id": "skeptic-pricing",
+      "who": "Karen, 52, owns a small accounting firm. Has been burned by 'free' tools that later held her data hostage. Reads pricing and privacy pages before committing to anything.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Decide whether you trust this service enough to use it for your firm's client testimonials. Check what is free, what costs money, what happens to your testimonials if you stop paying, and how client data is handled. Only create a wall if you are satisfied; say clearly why or why not." }
+      ]
+    },
+    {
+      "id": "agency-switcher",
+      "who": "Priya, 33, marketing lead at a 6-person agency, currently paying for Senja and considering cheaper options.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Evaluate this as a replacement for Senja for one of your clients. Try creating a wall, look for importing existing testimonials, exporting, branding and anything you'd miss. Decide whether you'd switch." }
+      ]
+    },
+    {
+      "id": "yoga-teacher-phone",
+      "who": "Lena, 26, yoga teacher with an Instagram bio link and a Linktree. Uses her phone only.",
+      "device": "mobile",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "You want a page of student testimonials you can link from your Instagram bio. Set it up and get the public page link you'd put in your bio." }
+      ]
+    }
+  ]
+}

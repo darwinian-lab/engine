@@ -1,0 +1,55 @@
+{
+  "note": "Simulated people for CalmCV. Owned by the engine; mutants never see or edit this file.",
+  "personas": [
+    {
+      "id": "new-grad-phone",
+      "who": "Emre, 22, just graduated in mechanical engineering, has never written a resume, doing it on his phone on the bus.",
+      "device": "mobile",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Make your first resume (invent plausible details: degree, one internship, two projects, skills) and download it as a PDF you could send to employers." }
+      ]
+    },
+    {
+      "id": "engineer-switching",
+      "who": "Grace, 34, backend software engineer with 9 years of experience, applying to new jobs. Wants it done well, fast.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Build a strong one-page resume for a senior backend role (invent realistic details), using an example if that helps, and download the PDF." },
+        { "label": "the next evening", "browser": "same", "task": "You want to tailor yesterday's resume for a fintech job: change the summary and reorder skills, then download again. Your resume should still be there." }
+      ]
+    },
+    {
+      "id": "returning-other-device",
+      "who": "Ahmed, 41, warehouse supervisor looking for a better job. Started his resume on his phone.",
+      "device": "mobile",
+      "phases": [
+        { "label": "today, on his phone", "browser": "same", "task": "Start a resume with your work history (invent realistic details) and download a first version." },
+        { "label": "three days later, on the library computer", "browser": "new", "device": "desktop", "task": "You are on a public library computer. Get your resume back to make a small fix and download it again. Use only what you would realistically remember." }
+      ]
+    },
+    {
+      "id": "paywall-skeptic",
+      "who": "Julia, 38, teacher moving into UX design. Has been tricked by resume sites that let you build everything and then charge at download.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Before investing time, check whether downloading the PDF is really free. If you trust it, build a career-change resume (invent details) and download it. Note anything that feels like a trap." }
+      ]
+    },
+    {
+      "id": "nurse-esl-phone",
+      "who": "Maricel, 30, registered nurse from the Philippines applying in the UK. English is her second language; prefers simple, clear instructions. Uses her phone.",
+      "device": "mobile",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Make a clean, simple resume for a nursing job in the UK (invent realistic details) and download the PDF." }
+      ]
+    },
+    {
+      "id": "ats-worrier",
+      "who": "Daniel, 27, marketing coordinator who read that applicant tracking systems reject fancy resumes.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Make a resume that will pass applicant tracking systems (invent details), check whatever the site says about ATS, and download it." }
+      ]
+    }
+  ]
+}

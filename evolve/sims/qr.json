@@ -1,0 +1,53 @@
+{
+  "note": "Simulated people for QRs That Last. Owned by the engine; mutants never see or edit this file.",
+  "personas": [
+    {
+      "id": "restaurant-wifi-phone",
+      "who": "Hakan, 47, owns a family restaurant. Not technical; on his phone during a quiet afternoon.",
+      "device": "mobile",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Guests keep asking for the Wi-Fi password. Make a QR code that connects them to your Wi-Fi (network 'Hakan Lokanta', password 'misafir2026') and download it so you can print it for the tables." }
+      ]
+    },
+    {
+      "id": "print-designer",
+      "who": "Marta, 38, print designer preparing business cards for a client. Knows file formats; hates pixelated output.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Make a QR code for https://studio-verde.example/contact in the brand's dark green (#1F4D3A) on white, download a vector file suitable for print, and make sure it won't stop working in a year." }
+      ]
+    },
+    {
+      "id": "burned-skeptic",
+      "who": "Tom, 55, runs a hardware store. Printed 2,000 flyers with a 'free' QR code that stopped working after 14 days unless he paid. Very suspicious now.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Find out whether QR codes made here can ever stop working or be held hostage, then make one for https://tomshardware-store.example and download it, if you trust it." }
+      ]
+    },
+    {
+      "id": "teacher-form",
+      "who": "Ms. Okafor, 31, secondary school teacher on a school Chromebook between classes, 5 minutes to spare.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Make a QR code that opens your class feedback form at https://forms.example.com/class-7b and download it to put on a slide." }
+      ]
+    },
+    {
+      "id": "shop-whatsapp",
+      "who": "Rosa, 44, runs a flower shop and takes orders on WhatsApp and by phone. Uses her phone.",
+      "device": "mobile",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Make a QR code for your shop window that lets people call or message the shop at +34 600 123 456, and download it." }
+      ]
+    },
+    {
+      "id": "event-organizer",
+      "who": "Kenji, 36, organises a small craft fair with 20 stalls. Efficient, likes doing things in bulk.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "You need QR codes for several stall pages (e.g. https://craftfair.example/stall/1 up to /stall/3 for now). Make and download them as efficiently as the site allows, and note what would make doing 20 easier." }
+      ]
+    }
+  ]
+}

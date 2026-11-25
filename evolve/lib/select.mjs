@@ -87,3 +87,85 @@ export function mutationSize(rng = Math.random) {
   const x = rng();
   return x < 0.5 ? "small" : x < 0.85 ? "medium" : "large";
 }
+
+/** P(a beats b) for two Beta posteriors, by sampling. */
+export function probBeats(a, b, draws = 4000, rng = Math.random) {
+  let w = 0;
+  for (let i = 0; i < draws; i++) {
+    if (beta(1 + a.successes, 1 + a.trials - a.successes, rng) > beta(1 + b.successes, 1 + b.trials - b.successes, rng)) w++;
+  }
+  return w / draws;
+}
+
+export const NURSERY_DEFAULTS = {
+  simWeight: 1, // one simulated session counts like this many real visitors...
+  simFadeAt: 50, // ...shrinking as real weekly visitors grow (weight / (1 + weekly/simFadeAt))
+  minSims: 6, // sessions before an arm can be judged on simulations
+  minTrials: 100, // real visitors before an arm can be judged on real traffic alone
+  promoteAt: 0.95, // P(beats champion) to take over
+  killAt: 0.1, // P(beats champion) below which a judged arm dies
+  graduateAt: 0.5, // P(beats champion) for a nursery arm to get real traffic
+  fieldSize: 2, // live arms competing for real traffic besides champion and control
+  nurserySize: 6, // arms judged by simulated people only
+  spawnPerCycle: 3,
+  nurseryMaxDays: 7,
+  fieldMaxDays: 21,
+};
+
+/**
+ * Selection with simulated and real evidence combined.
+ * arms: [{arm_id, status:'champion'|'live'|'nursery', created_at}]
+ * real, sims: {arm_id: {trials, successes}}
+ * Returns {promote, retire:[{arm_id,cause,score}], graduate:[arm_id], spawn, pb, pbeat, combined, lambda}
+ */
+export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), opts = {} }) {
+  const o = { ...NURSERY_DEFAULTS, ...opts };
+  const lambda = o.simWeight / (1 + weeklyReal / o.simFadeAt);
+  const combined = {};
+  for (const a of arms) {
+    const r = real[a.arm_id] ?? { trials: 0, successes: 0 };
+    const s = sims[a.arm_id] ?? { trials: 0, successes: 0 };
+    combined[a.arm_id] = { trials: r.trials + lambda * s.trials, successes: r.successes + lambda * s.successes, real: r, sims: s };
+  }
+  const pb = probBest(combined);
+  const champion = arms.find((a) => a.status === "champion");
+  const judged = (id) => (sims[id]?.trials ?? 0) >= o.minSims || (real[id]?.trials ?? 0) >= o.minTrials;
+  const pbeat = {};
+  for (const a of arms) pbeat[a.arm_id] = champion && a.arm_id !== champion.arm_id ? probBeats(combined[a.arm_id], combined[champion.arm_id]) : null;
+  const mean = (id) => (combined[id].successes + 1) / (combined[id].trials + 2);
+
+  let promote = null;
+  if (champion && judged(champion.arm_id)) {
+    const contenders = arms.filter((a) => a.status !== "champion" && judged(a.arm_id) && pbeat[a.arm_id] >= o.promoteAt);
+    contenders.sort((x, y) => mean(y.arm_id) - mean(x.arm_id));
+    promote = contenders[0]?.arm_id ?? null;
+  }
+  const retire = [];
+  for (const a of arms) {
+    if (a.status === "champion") {
+      if (promote) retire.push({ arm_id: a.arm_id, cause: `outcompeted by ${promote}`, score: 0.9 });
+      continue;
+    }
+    if (a.arm_id === promote) continue;
+    const ageDays = (now - a.created_at) / 86400_000;
+    const c = combined[a.arm_id];
+    const ev = `${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real`;
+    if (judged(a.arm_id) && pbeat[a.arm_id] !== null && pbeat[a.arm_id] < o.killAt) {
+      retire.push({ arm_id: a.arm_id, cause: `lost to the champion: P(better)=${pbeat[a.arm_id].toFixed(2)} [${ev}]`, score: pbeat[a.arm_id] });
+    } else if (a.status === "nursery" && ageDays > o.nurseryMaxDays) {
+      retire.push({ arm_id: a.arm_id, cause: `left the nursery without proving itself after ${ageDays.toFixed(0)} days [${ev}]`, score: pbeat[a.arm_id] ?? 0.3 });
+    } else if (a.status === "live" && ageDays > o.fieldMaxDays && (pbeat[a.arm_id] ?? 0) < 0.5) {
+      retire.push({ arm_id: a.arm_id, cause: `timed out after ${ageDays.toFixed(0)} days [${ev}]`, score: pbeat[a.arm_id] ?? 0.3 });
+    }
+  }
+  const dying = new Set(retire.map((r) => r.arm_id));
+  const liveLeft = arms.filter((a) => a.status === "live" && !dying.has(a.arm_id)).length;
+  const graduate = arms
+    .filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && a.arm_id !== promote && judged(a.arm_id) && (pbeat[a.arm_id] ?? 0) >= o.graduateAt)
+    .sort((x, y) => mean(y.arm_id) - mean(x.arm_id))
+    .slice(0, Math.max(0, o.fieldSize - liveLeft))
+    .map((a) => a.arm_id);
+  const nurseryLeft = arms.filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && !graduate.includes(a.arm_id) && a.arm_id !== promote).length;
+  const spawn = Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - nurseryLeft));
+  return { promote, retire, graduate, spawn, pb, pbeat, combined, lambda };
+}

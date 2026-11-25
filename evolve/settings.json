@@ -76,17 +76,19 @@
   },
   "models": {
     "mutate": "opus",
-    "repair": "sonnet"
+    "repair": "sonnet",
+    "curate": "sonnet",
+    "ideate": "sonnet"
   },
   "selection": {
     "minTrials": 100,
     "promoteAt": 0.95,
-    "killAt": 0.05,
-    "maxAgeDays": 21
+    "killAt": 0.1
   },
-  "maxSpawnPerRun": 2,
+  "maxSpawnPerRun": 3,
   "timeouts": {
-    "mutateMin": 40
+    "mutateMin": 40,
+    "evolveEveryHours": 6
   },
   "dryRun": false,
   "reminders": [
@@ -94,5 +96,39 @@
       "from": "2027-11-05",
       "text": "The DW_GH_TOKEN GitHub token expires on 2027-11-26. Create a new fine-grained token (darwinian-lab, all repos, Contents/Secrets/Workflows/Actions read & write) and replace the secret on darwinian-lab/engine."
     }
-  ]
+  ],
+  "spawnConcurrency": 2,
+  "nursery": {
+    "simWeight": 1,
+    "simFadeAt": 50,
+    "minSims": 6,
+    "graduateAt": 0.5,
+    "fieldSize": 2,
+    "nurserySize": 6,
+    "spawnPerCycle": 3,
+    "nurseryMaxDays": 7,
+    "fieldMaxDays": 21
+  },
+  "sims": {
+    "enabled": true,
+    "agent": "claude",
+    "model": "haiku",
+    "sessionsPerSpecies": 24,
+    "concurrency": 4,
+    "phaseMinutes": 10,
+    "maxTurns": 45,
+    "actionsPerPhase": 25,
+    "happyAt": 4,
+    "browser": "chrome",
+    "mobileDevice": "iPhone 15",
+    "mcpCommand": "playwright-mcp"
+  },
+  "seeds": {
+    "maxDeaths": 3,
+    "minScore": 0.12,
+    "perCycle": 1
+  },
+  "backlog": {
+    "maxNewPerCycle": 3
+  }
 }

@@ -10,7 +10,7 @@ export interface ArmStat {
 
 export interface Arm {
   arm_id: string;
-  status: string; // live | control | champion
+  status: string; // live | control | champion | nursery
   origin: string;
 }
 
