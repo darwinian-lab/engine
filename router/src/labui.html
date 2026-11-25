@@ -496,7 +496,7 @@ function betaCI(s, n) {
 }
 function drawFitness() {
   const stg = D.state.stages[D.state.stage];
-  $("#fitSub").innerHTML = `Share of real visitors (people whose browser ran the page) who ${stg ? `reached <b>${esc(stg.name)}</b>` : "succeeded"}, over the last 14 days. The bar is the 95% range the true rate probably sits in: wide bars mean too few visitors to tell yet.`;
+  $("#fitSub").innerHTML = `Share of real visitors (people who scrolled, tapped, clicked or typed) who ${stg ? `reached <b>${esc(stg.name)}</b>` : "succeeded"}, over the last 14 days. The bar is the 95% range the true rate probably sits in: wide bars mean too few visitors to tell yet.`;
   const rows = D.arms.filter((a) => ["champion", "live", "control"].includes(a.status))
     .sort((a, b) => ["champion", "live", "control"].indexOf(a.status) - ["champion", "live", "control"].indexOf(b.status) || a.created_at - b.created_at)
     .map((a) => { const s = statAll(a.arm_id) || { trials: 0, successes: 0 }; return { a, s, ci: s.trials ? betaCI(s.successes, s.trials) : null }; });
