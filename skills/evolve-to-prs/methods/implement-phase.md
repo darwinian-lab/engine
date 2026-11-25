@@ -10,4 +10,4 @@ You are implementing one phase of a larger plan. The phase is your bible.
 6. **When the phase is ambiguous, missing detail, or reality contradicts it,** use the best evidence-backed choice that preserves the phase's delivered behavior, and record the deviation. 
 7. **Verify and hand off.** Run the phase's acceptance checks. Stop on red — diagnose, don't paper over. Conclude with a short summary of commits landed, step-end SHAs, checks run, and any deviations.
 
-Never push, publish, amend, rebase, reset or squash commits, or expand scope to other phases. Every change is a new commit on top.
+Never push, publish, or expand scope to other phases. Changes and fixes go in new commits on top; rewrite a commit only when genuinely stuck.

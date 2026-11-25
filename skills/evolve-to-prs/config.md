@@ -45,7 +45,7 @@
   multi-part conditions; options objects for more than one optional parameter; no side effects in ternaries; delete
   what a change leaves unused; reuse existing utilities and terms; match the surrounding style in existing files.
 - Build in vertical slices: the thinnest end-to-end happy path first, then deepen. Don't build ahead of consumers.
-- Never rewrite commits: no `git commit --amend`, `git rebase`, `git reset`, squash or fixup. Every change, fixes included, is a new commit on top.
+- Don't rewrite commits: fixes go in new commits on top. Amend or reset only when you are genuinely stuck (e.g. a broken commit you can't otherwise get past), never for neatness.
 - Commits: follow `methods/commit-rules.md` as guidance. Not enforced or reviewed; never rewrite history for it.
 - PR description (`summary` in result.json): short and plain. What changed for people and why, in a few sentences.
   Shorter is better. Not reviewed.
