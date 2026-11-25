@@ -1,0 +1,33 @@
+name: sims
+# Simulated users run on their own every hour, separate from breeding (one job: parallel jobs would race to refresh
+# the shared Codex login).
+# Selection in the evolve cycle uses everything they recorded (sim_runs, last 14 days).
+on:
+  schedule: [{ cron: "20 * * * *" }]
+  workflow_dispatch:
+    inputs:
+      sims: { description: "Sessions per species (overrides settings)", required: false }
+permissions: { contents: write }
+jobs:
+  simulate:
+    concurrency: { group: sims, cancel-in-progress: false }
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      DW_GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+      DW_LAB_KEY: ${{ secrets.DW_LAB_KEY }}
+      GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: scripts/ci-setup.sh
+      - name: Simulated users
+        run: node evolve/run.mjs --sim-only ${{ inputs.sims && format('--sims {0}', inputs.sims) || '' }}
+      - if: always()
+        run: scripts/ci-finish.sh

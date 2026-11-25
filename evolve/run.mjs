@@ -552,7 +552,8 @@ async function cycle(sp) {
   let pre = decideNursery({ arms: evolving, real, sims, weeklyReal: weekly, opts: sel });
   const personas = loadPersonas(ENGINE_DIR, sp.id);
   let simResults = [];
-  if (!DRY && !NO_SIMS && simCfg.enabled !== false && personas.length) {
+  // Simulations normally run in their own hourly workflow (sims.yml); the cycle only runs them when asked to.
+  if (!DRY && !NO_SIMS && simCfg.enabled !== false && personas.length && (SIM_ONLY || simCfg.inCycle !== false)) {
     simResults = await runSims({ cfg: { ...cfg, sims: simCfg }, db, sp, stageEvent: stage.event, arms: competing, personas, budget: Number(argv("--sims") ?? simCfg.sessionsPerSpecies ?? 24), minSims: sel.minSims, combined: pre.combined });
     if (simResults.rateLimited) await journal(sp.id, "note", null, "simulations paused: model usage limit reached");
     const ok = simResults.filter((r) => r.outcome === "success").length;
@@ -639,6 +640,8 @@ async function cycle(sp) {
   }
 
   // 4. Backlog: turn what simulated people hit and wished for into issues; ideate once a day.
+  // Feedback since the last cycle, from the in-cycle sims or the hourly sim runs.
+  if (!simResults.length) simResults = await recentSimReports(sp.id, now() - (cfg.cycleHours ?? 2) * 3600_000);
   if (!DRY && simResults.length && issues !== null) {
     const feedback = [];
     for (const r of simResults) for (const ph of r.report.phases ?? []) {
@@ -683,6 +686,16 @@ async function crossoverPair(sp, arms, champion, real, weekly) {
     }
   }
   return null;
+}
+
+/** Simulated sessions recorded since `since` (by any run), in the shape the cycle uses for feedback. */
+async function recentSimReports(spId, since) {
+  const rows = await db.all("SELECT persona, arm_id, outcome, report FROM sim_runs WHERE species=? AND ts>? AND outcome!='error' ORDER BY ts DESC LIMIT 80", [spId, since]);
+  return rows.map((r) => {
+    let report = {};
+    try { report = JSON.parse(r.report ?? "{}"); } catch {}
+    return { persona: r.persona, arm_id: r.arm_id, outcome: r.outcome, report: { phases: [], ...report } };
+  });
 }
 
 /** Codex turns simulated feedback into backlog actions. */

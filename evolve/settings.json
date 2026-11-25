@@ -115,6 +115,7 @@
   },
   "sims": {
     "enabled": true,
+    "inCycle": false,
     "agent": "codex",
     "model": "haiku",
     "sessionsPerSpecies": 24,
