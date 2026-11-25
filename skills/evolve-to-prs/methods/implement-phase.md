@@ -2,7 +2,7 @@
 
 You are implementing one phase of a larger plan. The phase is your bible.
 
-1. **Read the phase.** Use the phase and plan path the caller names.
+1. **Read the phase and the commit rules.** Use the phase and plan path the caller names. Follow `methods/commit-rules.md` as guidance while you commit; it is not enforced.
 2. **Reconcile with what's already done.** `git status` (must be clean outside the run folder — if not, stop and report). `git --no-pager log --oneline -30` to see what's landed; spot-check commits with `git --no-pager show <hash>` only when the log alone leaves the picture unclear.
 3. **Confirm the starting point.** Before any commit, establish: which phase, which steps remain (if partially done), and which branch and base SHA the caller assigned.
 4. **Work test-first per step.** Each step is one behavior: write its failing tests, then the code that turns them green.

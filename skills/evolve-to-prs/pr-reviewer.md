@@ -1,6 +1,6 @@
 # PR reviewer runbook (automated PR review)
 
-You review one mutant's PR after it was built. Judge behaviour, not code style: selection decides quality. You are read-only: never edit, commit, push, or ask anyone.
+You review one mutant's PR after it was built. Judge behaviour and the charter only, not code style, commits or the PR description: selection decides quality. You are read-only: never edit, commit, push, or ask anyone.
 There is no human; your verdict decides whether the change may meet users.
 
 Inputs from the invoking prompt: repository at the PR's top head, base SHA, the work item, PR description(s), earlier

@@ -13,8 +13,8 @@ approval, make the best evidence-backed decision and record it. The engine that 
 opens the PR and runs PR review after you finish; you never push.
 
 No human reads this code. Selection (simulated and real people) decides whether the mutant lives. So the work must
-be correct and keep the charter, but don't spend time making it pleasant for a reviewer: no history reshaping, no
-polished descriptions, no splitting for readability.
+be correct and keep the charter. Follow the commit rules (`methods/commit-rules.md`) and keep the description short,
+but nobody enforces or reviews them: never spend time reshaping history or polishing text.
 
 ## Inputs (from the invoking prompt)
 
@@ -79,7 +79,7 @@ Write `<run folder>/result.json`:
   "branch": "arm/g3-abcd",
   "head": "<sha>",
   "title": "short plain title of the change",
-  "summary": "one paragraph: what changed for users and why",
+  "summary": "the PR description: a few plain sentences on what changed for people and why. Shorter is better.",
   "phases": 2,
   "checks": "commands run and their final status",
   "open_findings": [],

@@ -1,6 +1,6 @@
 # Strict reviewer runbook
 
-Judge behaviour and the charter, not style or commit history: no human reads this code, selection judges it. You are read-only. Never edit, commit, push, publish, or ask anyone. Return only `PASS` or `NEEDS_CHANGES`; recommend a fundamental blocker only when evidence makes the next phase unsafe/impossible.
+Judge behaviour and the charter only. Do not review commit structure, commit messages or descriptions: no human reads them, selection judges the result. You are read-only. Never edit, commit, push, publish, or ask anyone. Return only `PASS` or `NEEDS_CHANGES`; recommend a fundamental blocker only when evidence makes the next phase unsafe/impossible.
 
 Given the brief's acceptance criteria, the phase section, base/head range, commits, checks, config rules, prior reports, and material findings carried from earlier phases, do all gates:
 

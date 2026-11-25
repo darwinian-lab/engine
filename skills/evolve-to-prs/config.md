@@ -45,5 +45,8 @@
   multi-part conditions; options objects for more than one optional parameter; no side effects in ternaries; delete
   what a change leaves unused; reuse existing utilities and terms; match the surrounding style in existing files.
 - Build in vertical slices: the thinnest end-to-end happy path first, then deepen. Don't build ahead of consumers.
-- No human reviews this code; don't spend effort on history shape or descriptions. Correct behaviour comes first.
+- Commits: follow `methods/commit-rules.md` as guidance. Not enforced or reviewed; never rewrite history for it.
+- PR description (`summary` in result.json): short and plain. What changed for people and why, in a few sentences.
+  Shorter is better. Not reviewed.
+- No human reviews this code. Correct behaviour comes first.
 - No mention of AI or agents in anything users see.
