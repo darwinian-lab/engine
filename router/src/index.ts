@@ -203,7 +203,8 @@ export default {
       const next = url.searchParams.get("next") ?? "/";
       const res = new Response(null, { status: 303, headers: { location: next.startsWith("/") && !next.startsWith("//") ? next : "/" } });
       for (const [k, v] of [["dw_sim", url.searchParams.get("t")!], ["dw_arm", clean(url.searchParams.get("arm"))], ["dw_vid", "sim-" + clean(url.searchParams.get("vid"))]]) {
-        res.headers.append("set-cookie", `${k}=${v}; Path=/; Secure; HttpOnly; SameSite=Lax`);
+        // Persistent, so a simulated person returning "days later" (a restarted browser) is still recognised.
+        res.headers.append("set-cookie", `${k}=${v}; Path=/; Max-Age=2592000; Secure; HttpOnly; SameSite=Lax`);
       }
       return res;
     }
