@@ -147,7 +147,10 @@ export async function snapshot(env: Env, sp: string) {
     const m = simAgg[id] ?? { trials: 0, successes: 0 };
     return { arm_id: id, segment: "all", trials: r.trials + lambda * m.trials, successes: r.successes + lambda * m.successes };
   });
-  const pb = probBest(competing, combinedStats);
+  // Show the last recorded measurement (stable across page loads); compute live only if none exists yet.
+  const lastCycle = (pbHistory as any[]).length ? Math.max(...(pbHistory as any[]).map((h) => h.ts)) : 0;
+  const recorded = Object.fromEntries((pbHistory as any[]).filter((h) => h.ts === lastCycle && competing.includes(h.arm_id)).map((h) => [h.arm_id, h.pbest]));
+  const pb = Object.keys(recorded).length ? recorded : probBest(competing, combinedStats);
 
   const byArm: Record<string, Record<string, any>> = {};
   for (const s of stats) (byArm[s.arm_id] ??= {})[s.segment] = { trials: s.trials, successes: s.successes, revenue: s.revenue, requests: s.requests, errors: s.errors };

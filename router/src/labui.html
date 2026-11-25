@@ -370,7 +370,7 @@ function render() {
     </section>
     <div class="grid two">
       <section class="panel"><h2>How each competitor is doing</h2><p class="sub" id="fitSub"></p><div id="fit"></div></section>
-      <section class="panel"><h2>Chance of being the best, over time</h2><p class="sub">Each competitor's chance of being the best, given everything observed so far, recomputed every evolve cycle (every 6 hours). A challenger takes over once it is 95% likely to beat the champion.</p><div id="pbChart"></div></section>
+      <section class="panel"><h2>Chance of being the best, over time</h2><p class="sub">Each competitor's chance of being the best, given everything observed so far, measured once per evolve cycle. Dots are measurements; a value holds until the next one. A challenger takes over once it is 95% likely to beat the champion.</p><div id="pbChart"></div></section>
     </div>
     <div class="grid two">
       <section class="panel"><h2>Where visitors came from</h2><p class="sub">Distinct visitors per day over the last 30 days, by the site that sent them. Your own visits aren't counted.</p><div id="src"></div></section>
@@ -585,51 +585,63 @@ function niceTicks(max, n) {
 const SLOTS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)", "var(--s6)", "var(--s7)", "var(--s8)"];
 function drawPb() {
   const box = $("#pbChart");
-  const hist = D.pbHistory.slice();
-  for (const [id, p] of Object.entries(D.pb)) hist.push({ ts: D.now, arm_id: id, pbest: p });
+  // Only recorded measurements (one per evolve cycle). Nothing is computed live here, so points never move.
+  const hist = D.pbHistory.slice().sort((a, b) => a.ts - b.ts);
   const byArm = {};
   for (const h of hist) (byArm[h.arm_id] ??= []).push(h);
   const armsIn = Object.keys(byArm).map(armById).filter(Boolean).sort((a, b) => a.created_at - b.created_at);
-  const pts = hist.length;
-  if (D.pbHistory.length < 2) {
-    box.innerHTML = `<p class="empty">The first points arrive with the next evolve cycles. Right now: ${armsIn.map((a) => `<span class="mono">${esc(a.arm_id)}</span> ${pct(D.pb[a.arm_id])}`).join(", ") || "no competitors"}.</p>`;
+  if (hist.length < 2) {
+    box.innerHTML = `<p class="empty">The first measurements arrive with the next evolve cycles.</p>`;
     return;
   }
   const shown = armsIn.slice(-8); // color follows the arm; more than eight never share a chart
   const color = Object.fromEntries(shown.map((a, i) => [a.arm_id, SLOTS[i]]));
-  const t0 = Math.min(...hist.map((h) => h.ts)), t1 = D.now;
+  const t0 = hist[0].ts, t1 = Math.max(D.now, hist[hist.length - 1].ts);
   const W = Math.max(300, box.clientWidth), H = 230, L = 40, R = 86, TOP = 10, B = 26;
   const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
   const y = (p) => TOP + (1 - p) * (H - TOP - B);
+  const alive = (a) => ["champion", "live", "nursery"].includes(a.status);
   let g = "";
   for (const p of [0, 0.25, 0.5, 0.75, 1]) g += `<line class="grid-line" x1="${L}" x2="${W - R}" y1="${y(p)}" y2="${y(p)}"/><text x="${L - 6}" y="${y(p) + 4}" text-anchor="end">${pct(p)}</text>`;
   g += `<line x1="${L}" x2="${W - R}" y1="${y(0.95)}" y2="${y(0.95)}" stroke="var(--st-champion)" stroke-dasharray="4 4"/><text x="${L + 4}" y="${y(0.95) - 5}" fill="var(--ink-2)">promotion line</text>`;
-  const days = (t1 - t0) / DAY;
-  const step = Math.max(1, Math.ceil(days / 5));
-  for (let d = Math.ceil(t0 / DAY); d * DAY <= t1; d += step) g += `<text x="${x(d * DAY)}" y="${H - 6}" text-anchor="middle">${fmtDay(d * DAY)}</text>`;
+  const span = t1 - t0;
+  if (span > 2 * DAY) {
+    const step = Math.max(1, Math.ceil(span / DAY / 5));
+    for (let d = Math.ceil(t0 / DAY); d * DAY <= t1; d += step) g += `<text x="${x(d * DAY)}" y="${H - 6}" text-anchor="middle">${fmtDay(d * DAY)}</text>`;
+  } else {
+    const step = span > 12 * HOUR ? 6 * HOUR : span > 4 * HOUR ? 2 * HOUR : HOUR;
+    for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) g += `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${new Date(t).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</text>`;
+  }
+  g += `<line x1="${x(t1)}" x2="${x(t1)}" y1="${TOP}" y2="${H - B}" stroke="var(--rule)"/>`;
   const labels = [];
   for (const a of shown) {
-    const s = byArm[a.arm_id].sort((p, q) => p.ts - q.ts);
-    g += `<polyline fill="none" stroke="${color[a.arm_id]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${s.map((h) => x(h.ts).toFixed(1) + "," + y(h.pbest).toFixed(1)).join(" ")}"/>`;
+    const s = byArm[a.arm_id];
+    // Step line: a value holds until the next measurement.
+    let d = `M${x(s[0].ts).toFixed(1)},${y(s[0].pbest).toFixed(1)}`;
+    for (let i = 1; i < s.length; i++) d += ` H${x(s[i].ts).toFixed(1)} V${y(s[i].pbest).toFixed(1)}`;
     const last = s[s.length - 1];
-    g += `<circle cx="${x(last.ts)}" cy="${y(last.pbest)}" r="4" fill="${color[a.arm_id]}" stroke="var(--panel)" stroke-width="2"/>`;
-    labels.push({ y: y(last.pbest), text: a.arm_id, c: color[a.arm_id] });
+    // Still competing: the last measurement holds until now (faint). Ended: the line stops at its last measurement.
+    const end = alive(a) ? t1 : last.ts;
+    g += `<path d="${d}" fill="none" stroke="${color[a.arm_id]}" stroke-width="2" stroke-linejoin="round"/>`;
+    if (end > last.ts) g += `<line x1="${x(last.ts)}" x2="${x(end)}" y1="${y(last.pbest)}" y2="${y(last.pbest)}" stroke="${color[a.arm_id]}" stroke-width="2" stroke-opacity=".35" stroke-dasharray="3 3"/>`;
+    for (const h of s) g += `<circle cx="${x(h.ts)}" cy="${y(h.pbest)}" r="${h === last ? 4 : 2.6}" fill="${color[a.arm_id]}" stroke="var(--panel)" stroke-width="${h === last ? 2 : 1}"/>`;
+    labels.push({ y: y(last.pbest), x: x(end), text: a.arm_id + (alive(a) ? "" : " (ended)"), c: color[a.arm_id] });
   }
-  // direct labels at line ends, nudged apart
   labels.sort((p, q) => p.y - q.y);
   for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 14) labels[i].y = labels[i - 1].y + 14;
   for (const l of labels) g += `<text x="${W - R + 8}" y="${l.y + 4}" font-family="var(--mono)" font-size="11" fill="var(--ink)">${esc(l.text)}</text>`;
   g += `<line id="pbCross" x1="0" x2="0" y1="${TOP}" y2="${H - B}" stroke="var(--ink-3)" visibility="hidden"/><rect id="pbHit" x="${L}" y="${TOP}" width="${W - L - R}" height="${H - TOP - B}" fill="transparent"/>`;
-  box.innerHTML = `<div class="legend-row">${shown.map((a) => `<span><i style="background:${color[a.arm_id]}"></i><span class="mono">${esc(a.arm_id)}</span></span>`).join("")}</div><svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Chance of being best over time">${g}</svg>`;
+  box.innerHTML = `<div class="legend-row">${shown.map((a) => `<span><i style="background:${color[a.arm_id]}"></i><span class="mono">${esc(a.arm_id)}</span></span>`).join("")}</div><svg class="chart" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Chance of being best, per evolve cycle">${g}</svg>`;
   const hit = $("#pbHit", box), cross = $("#pbCross", box);
-  const times = [...new Set(hist.map((h) => h.ts))].sort((a, b) => a - b);
+  const times = [...new Set(hist.map((h) => h.ts))];
   hit.addEventListener("mousemove", (e) => {
     const r = hit.getBoundingClientRect();
     const t = t0 + ((e.clientX - r.left) / r.width) * (t1 - t0);
-    const tt = times.reduce((b, c) => (Math.abs(c - t) < Math.abs(b - t) ? c : b), times[0]);
+    // The measurement in force at time t (the latest one at or before it).
+    const tt = times.filter((m) => m <= t).pop() ?? times[0];
     cross.setAttribute("x1", x(tt)); cross.setAttribute("x2", x(tt)); cross.setAttribute("visibility", "visible");
     const rows = shown.map((a) => ({ a, h: byArm[a.arm_id].find((h) => h.ts === tt) })).filter((r) => r.h).sort((p, q) => q.h.pbest - p.h.pbest);
-    showTip(e, `<div class="t-h">${fmtTime(tt)}</div>${rows.map((r) => `<div class="t-row"><span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color[r.a.arm_id]};margin-right:6px"></i><span class="mono">${esc(r.a.arm_id)}</span></span><b>${pct(r.h.pbest)}</b></div>`).join("")}`);
+    showTip(e, `<div class="t-h">Cycle at ${fmtTime(tt)}</div>${rows.map((r) => `<div class="t-row"><span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color[r.a.arm_id]};margin-right:6px"></i><span class="mono">${esc(r.a.arm_id)}</span></span><b>${pct(r.h.pbest)}</b></div>`).join("")}`);
   });
   hit.addEventListener("mouseleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
 }
