@@ -6,6 +6,7 @@
 // then breed new mutants up to the traffic-adjusted population size.
 
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { d1 } from "./lib/d1.mjs";
 import { loadConfig } from "./lib/config.mjs";
@@ -225,6 +226,28 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings) {
   }
 }
 
+// Push every URL in the sitemap to IndexNow (Bing, Yandex, Seznam, Naver, Yep) at most once a day.
+// Bing's index also feeds ChatGPT search and Copilot.
+async function announce(sp) {
+  if (DRY || !cfg.labKey || !sp.domain) return;
+  const recent = await db.first("SELECT id FROM journal WHERE species=? AND kind='indexnow' AND ts>?", [sp.id, now() - 20 * 3600_000]);
+  if (recent) return;
+  try {
+    const key = crypto.createHash("sha256").update(`${cfg.labKey}:indexnow`).digest("hex").slice(0, 32);
+    const xml = await (await fetch(`https://${sp.domain}/sitemap.xml`)).text();
+    const urlList = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]).slice(0, 10000);
+    if (!urlList.length) return;
+    const res = await fetch("https://api.indexnow.org/indexnow", {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ host: sp.domain, key, keyLocation: `https://${sp.domain}/${key}.txt`, urlList }),
+    });
+    await journal(sp.id, "indexnow", null, `submitted ${urlList.length} URLs to IndexNow: HTTP ${res.status}`);
+  } catch (e) {
+    log(`[${sp.id}] indexnow failed: ${e.message}`);
+  }
+}
+
 async function cycle(sp) {
   const repo = path.join(cfg.workdir, sp.repo);
   await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
@@ -278,6 +301,7 @@ async function cycle(sp) {
     await journal(sp.id, "promote", dec.promote, `new champion (P(best)=${dec.pb[dec.promote].toFixed(3)}); generation ${st.generation}`);
   }
 
+  await announce(sp);
   const alive = await db.all("SELECT * FROM arms WHERE species=? AND status IN ('live','champion')", [sp.id]);
   const champion = alive.find((a) => a.status === "champion") ?? alive[0];
   if (!champion) {

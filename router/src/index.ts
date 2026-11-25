@@ -151,6 +151,11 @@ export default {
     }
     if (url.pathname === "/_dw/lab") return lab(req, env);
     if (url.pathname === "/_dw/health") return new Response("ok");
+    // IndexNow ownership proof: /<key>.txt at the root (key derived from the lab key; the evolve loop does the same).
+    if (/^\/[0-9a-f]{32}\.txt$/.test(url.pathname) && env.LAB_KEY) {
+      const key = await indexNowKey(env.LAB_KEY);
+      if (url.pathname === `/${key}.txt`) return new Response(key, { headers: { "content-type": "text/plain" } });
+    }
 
     const st = await state(env);
     if (st.arms.length === 0) return new Response("Warming up. Please try again shortly.", { status: 503 });
@@ -257,6 +262,11 @@ export default {
     }
   },
 };
+
+export async function indexNowKey(labKey: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${labKey}:indexnow`));
+  return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+}
 
 async function creditOwner(env: Env, name: string, owner: string, path: string) {
   const row = await env.DB.prepare(
