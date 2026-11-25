@@ -137,20 +137,20 @@ export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), 
   for (const a of arms) pbeat[a.arm_id] = champion && a.arm_id !== champion.arm_id ? probBeats(combined[a.arm_id], combined[champion.arm_id]) : null;
   const mean = (id) => (combined[id].successes + 1) / (combined[id].trials + 2);
 
-  let promote = null;
-  if (!anySuccess) return { promote: null, retire: [], graduate: [], spawn: Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - arms.filter((a) => a.status === "nursery").length)), pb, pbeat: {}, combined, lambda, blind: true };
+  // Every arm that clearly beats the champion is promoted, best first: unrelated improvements can all land.
+  let promotions = [];
+  if (!anySuccess) return { promote: null, promotions: [], retire: [], graduate: [], spawn: Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - arms.filter((a) => a.status === "nursery").length)), pb, pbeat: {}, combined, lambda, blind: true };
   if (champion && judged(champion.arm_id)) {
     const contenders = arms.filter((a) => a.status !== "champion" && judged(a.arm_id) && pbeat[a.arm_id] >= o.promoteAt);
     contenders.sort((x, y) => mean(y.arm_id) - mean(x.arm_id));
-    promote = contenders[0]?.arm_id ?? null;
+    promotions = contenders.map((a) => a.arm_id);
   }
+  const promote = promotions[0] ?? null;
+  const winning = new Set(promotions);
   const retire = [];
   for (const a of arms) {
-    if (a.status === "champion") {
-      if (promote) retire.push({ arm_id: a.arm_id, cause: `outcompeted by ${promote}`, score: 0.9 });
-      continue;
-    }
-    if (a.arm_id === promote) continue;
+    // The champion is retired by the caller only once a winner has actually been merged.
+    if (a.status === "champion" || winning.has(a.arm_id)) continue;
     const ageDays = (now - a.created_at) / 86400_000;
     const c = combined[a.arm_id];
     const ev = `${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real`;
@@ -165,11 +165,11 @@ export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), 
   const dying = new Set(retire.map((r) => r.arm_id));
   const liveLeft = arms.filter((a) => a.status === "live" && !dying.has(a.arm_id)).length;
   const graduate = arms
-    .filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && a.arm_id !== promote && judged(a.arm_id) && combined[a.arm_id].successes > 0 && (pbeat[a.arm_id] ?? 0) > o.graduateAt)
+    .filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && !winning.has(a.arm_id) && judged(a.arm_id) && combined[a.arm_id].successes > 0 && (pbeat[a.arm_id] ?? 0) > o.graduateAt)
     .sort((x, y) => mean(y.arm_id) - mean(x.arm_id))
     .slice(0, Math.max(0, o.fieldSize - liveLeft))
     .map((a) => a.arm_id);
-  const nurseryLeft = arms.filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && !graduate.includes(a.arm_id) && a.arm_id !== promote).length;
+  const nurseryLeft = arms.filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && !graduate.includes(a.arm_id) && !winning.has(a.arm_id)).length;
   const spawn = Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - nurseryLeft));
-  return { promote, retire, graduate, spawn, pb, pbeat, combined, lambda };
+  return { promote, promotions, retire, graduate, spawn, pb, pbeat, combined, lambda };
 }

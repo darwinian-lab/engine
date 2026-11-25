@@ -51,6 +51,18 @@ export function makePipeline(d) {
   const commitsOf = async (wt, base, head) => (await run("git", ["log", "--format=%h %s", `${base}..${head}`], { cwd: wt })).out.trim();
 
 
+  /** A crossover's hypothesis is simply "both parents' improvements together". */
+  function crossoverHypothesis(c) {
+    const t = (x) => String(x.hypothesis ?? x.arm_id).split(":")[0].trim();
+    return {
+      title: `${t(c.a)} + ${t(c.b)}`,
+      hypothesis: `${c.a.arm_id} and ${c.b.arm_id} each beat the champion on their own (P=${(c.a.pbeat ?? 0).toFixed(2)}, ${(c.b.pbeat ?? 0).toFixed(2)}). Together they should help more than either alone.`,
+      work_item: `Combine the two mutants into one change on top of main, keeping both behaviours working together.\n\n- ${c.a.arm_id}: ${c.a.hypothesis}\n- ${c.b.arm_id}: ${c.b.hypothesis}`,
+      acceptance_criteria: ["Everything each parent added still works", "The two changes don't contradict each other in copy or layout", "Core flows still pass"],
+      implements_issue: null,
+    };
+  }
+
   const chosenThisCycle = new Map();
   let hypChain = Promise.resolve();
   const hypLock = (fn) => {
@@ -114,7 +126,8 @@ export function makePipeline(d) {
     const armId = resume?.armId ?? `g${st.generation + 1}-${rid()}`;
     const prefix = `arm/${armId}`;
     const size = resume?.size ?? mutationSize();
-    const wip = { dir: path.join(cfg.workdir, "wip", `${sp.id}-${armId}`), state: resume ?? { armId, species: sp.id, parentId: parent.arm_id, size, revival: ctx.revival ?? null, attempts: 0, created: now() } };
+    const wip = { dir: path.join(cfg.workdir, "wip", `${sp.id}-${armId}`), state: resume ?? { armId, species: sp.id, parentId: parent.arm_id, size, revival: ctx.revival ?? null, crossover: ctx.crossover ?? null, attempts: 0, created: now() } };
+    const cross = ctx.crossover ?? null;
     const wt = path.join(cfg.workdir, "wt", `${sp.id}-${armId}`);
     const runDir = path.join(cfg.workdir, ".tmp", "runs", `${sp.id}-${armId}`);
     fs.mkdirSync(runDir, { recursive: true });
@@ -153,7 +166,7 @@ export function makePipeline(d) {
 
       // 1. Hypothesis: what to build and why.
       // Hypotheses are chosen one at a time per species so siblings bred in the same cycle pick different ideas.
-      const hyp = wip.state.hyp ?? await hypLock(async () => {
+      const hyp = wip.state.hyp ?? (cross ? crossoverHypothesis(cross) : null) ?? await hypLock(async () => {
         const taken = (chosenThisCycle.get(sp.id) ?? []).map((h) => `- (this cycle) ${h}`).join("\n");
         const promptCtx = { ...ctx.promptCtx, size, siblings: [ctx.promptCtx?.siblings, taken].filter(Boolean).join("\n") };
         const h = await agent({ label: `${sp.id}/${armId} hypothesis`, cwd: wt, prompt: hypothesisPrompt(promptCtx) + (taken ? "\n\nOther mutants of this cycle already took the ideas marked (this cycle) above. Choose a clearly different problem, not a variation of theirs." : ""), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 15, json: true });
@@ -175,7 +188,35 @@ export function makePipeline(d) {
       // 2. Build with evolve-to-prs: one mutation, one branch, one PR.
       const branch = prefix;
       const resultFile = path.join(runDir, "result.json");
-      if (!(resume && fs.existsSync(resultFile) && wip.state.stage !== "build")) {
+      let crossResolved = wip.state.crossResolved ?? false;
+      if (cross && !(resume && fs.existsSync(resultFile))) {
+        // Crossover: no new code from scratch. Merge both parents onto main; an agent only resolves conflicts.
+        await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: wt });
+        if ((await run("git", ["rev-parse", "--verify", "-q", `refs/heads/${branch}`], { cwd: wt })).code !== 0) await must("git", ["checkout", "-q", "-b", branch], { cwd: wt });
+        else await must("git", ["checkout", "-q", branch], { cwd: wt });
+        let failed = null;
+        for (const p of [cross.a, cross.b]) {
+          if ((await run("git", ["merge-base", "--is-ancestor", p.git_ref, "HEAD"], { cwd: wt })).code === 0) continue;
+          const m = await run("git", [...GIT_ID, "merge", "--no-ff", "--no-edit", "-m", `Cross in ${p.arm_id}: ${String(p.hypothesis ?? "").split(":")[0]}`, p.git_ref], { cwd: wt });
+          if (m.code === 0) continue;
+          crossResolved = true;
+          await checkpoint(null, { crossResolved });
+          await agent({ label: `${sp.id}/${armId} merge ${p.arm_id}`, cwd: wt, prompt: `Merging mutant ${p.arm_id} into this branch stopped with conflicts. This branch combines two mutants that each improved the product on their own:\n\n- ${cross.a.arm_id}: ${cross.a.hypothesis}\n- ${cross.b.arm_id}: ${cross.b.hypothesis}\n\nResolve every conflict so BOTH behaviours are kept and work together, then \`git add\` and \`git -c user.name=darwinian -c user.email=evolve@darwinian.local commit --no-edit\`. Run npm test, npm run typecheck and npm run e2e and fix anything broken with new commits. Never modify protected files.`, model: cfg.models.repair ?? "sonnet", tools: CODE_TOOLS, browser: true, minutes: 40 });
+          if ((await run("git", ["rev-parse", "-q", "--verify", "MERGE_HEAD"], { cwd: wt })).code === 0) {
+            await run("git", ["merge", "--abort"], { cwd: wt });
+            failed = `the two parents conflict and the conflicts could not be resolved while merging ${p.arm_id}`;
+            break;
+          }
+        }
+        if (failed) {
+          await journal(sp.id, "reject", armId, `crossover failed: ${failed}`);
+          await stillborn(sp, armId, parent, st, `crossover failed: ${failed}`, { mutation: workItem, size });
+          await db.run("UPDATE arms SET crossed_from=? WHERE species=? AND arm_id=?", [`${cross.a.arm_id},${cross.b.arm_id}`, sp.id, armId]).catch(() => {});
+          return null;
+        }
+        fs.writeFileSync(resultFile, JSON.stringify({ branch, title: hyp.title, summary: failed ?? `Combines ${cross.a.arm_id} and ${cross.b.arm_id}, which each beat the champion on their own.\n\n- ${cross.a.hypothesis}\n- ${cross.b.hypothesis}`, head: failed ? null : "merged" }));
+        await checkpoint("checks");
+      } else if (!(resume && fs.existsSync(resultFile) && wip.state.stage !== "build")) {
         const buildArgs = { label: `${sp.id}/${armId} build`, cwd: wt, model: cfg.models.mutate ?? "sonnet", tools: [...CODE_TOOLS, "Task", "TodoWrite"], browser: true, web: true, minutes: cfg.timeouts?.buildMin ?? 150, onSession: (id) => checkpoint(null, { buildSession: id }) };
         if (resume && wip.state.buildSession) {
           await agent({ ...buildArgs, resume: wip.state.buildSession, prompt: `You were interrupted (usage limit, outage or crash) and this session has been restored. Continue the work exactly where you left off: check git status, git log and the run folder ${runDir} (run-config.md, completion notes, reviews), finish the remaining phases, and write ${resultFile} last as the skill describes.` });
@@ -194,7 +235,7 @@ export function makePipeline(d) {
         return null;
       }
       await must("git", ["checkout", "-q", branch], { cwd: wt });
-      if (!fs.existsSync(path.join(runDir, "phased-plan.md"))) ghNotice(`${sp.id} ${armId} build`, "the builder skipped the planner (no phased-plan.md in the run folder)");
+      if (!cross && !fs.existsSync(path.join(runDir, "phased-plan.md"))) ghNotice(`${sp.id} ${armId} build`, "the builder skipped the planner (no phased-plan.md in the run folder)");
       await journal(sp.id, "progress", armId, `built (${(await commitsOf(wt, baseSha, "HEAD")).split("\n").length} commits); running checks`);
 
       // 3. Viability gates on the top head (protected files, tests, typecheck, build, end-to-end).
@@ -225,9 +266,11 @@ export function makePipeline(d) {
       // 5. Automated PR review: Codex (charter) + a fresh Claude reviewer, feedback commits, up to N rounds.
       const rounds = cfg.prReviewRounds ?? 3;
       const history = [];
-      let approved = false;
+      // A crossover that merged cleanly combines two already-reviewed changes: skip straight to the nursery.
+      let approved = Boolean(cross && !crossResolved);
       let lastFindings = [];
-      for (let round = 1; round <= rounds + 1; round++) {
+      if (approved) await commentPR(repoSlug, topPr.number, "Crossover of two reviewed mutants that merged without conflicts; checks pass, so it goes straight to the nursery.");
+      for (let round = 1; !approved && round <= rounds + 1; round++) {
         const headSha = (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim();
         const diff = (await run("git", ["diff", `${baseSha}...${headSha}`], { cwd: wt })).out;
         const audit = await codex(auditPrompt({ charter: fs.readFileSync(path.join(wt, "CHARTER.md"), "utf8"), diff, mutation: workItem, earlier: history.join("\n\n") }), "audit");
@@ -297,13 +340,13 @@ export function makePipeline(d) {
       await photograph(sp, armId, origin);
       const issueNo = hyp.implements_issue ?? parseImplements(workItem);
       await db.run(
-        `INSERT INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at, mutation, size, diffstat, audit, personas, shot_at, revived_from, revivable, issue, prs, work_item)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [sp.id, armId, origin, "nursery", st.generation + 1, parent.arm_id, tag, `${hyp.title}: ${hyp.hypothesis}`.slice(0, 600), now(), mutationText, size, JSON.stringify(diffstat), JSON.stringify(auditInfo), null, now(), ctx.revival?.root ?? null, 1, issueNo, JSON.stringify(prs), JSON.stringify(hyp)],
+        `INSERT INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at, mutation, size, diffstat, audit, personas, shot_at, revived_from, revivable, issue, prs, work_item, crossed_from)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [sp.id, armId, origin, "nursery", st.generation + 1, parent.arm_id, tag, `${hyp.title}: ${hyp.hypothesis}`.slice(0, 600), now(), mutationText, size, JSON.stringify(diffstat), JSON.stringify(auditInfo), null, now(), ctx.revival?.root ?? null, 1, issueNo, JSON.stringify(prs), JSON.stringify(hyp), cross ? `${cross.a.arm_id},${cross.b.arm_id}` : null],
       );
       await commentPR(repoSlug, topPr.number, `Approved by automated review and deployed to the nursery as \`${armId}\`. Simulated people judge it next; it is merged only if it wins selection.`);
       if (issueNo) await comment(repoSlug, issueNo, `Mutant \`${armId}\` is trying this: ${topPr.url}`).catch(() => {});
-      await journal(sp.id, "spawn", armId, `${size} ${ctx.revival ? `revival of ${ctx.revival.root}, ` : ""}mutation of ${parent.arm_id} as ${prs.map((p) => `#${p.number}`).join(" + ")}: ${hyp.title}. ${hyp.hypothesis}`);
+      await journal(sp.id, "spawn", armId, `${cross ? `crossover of ${cross.a.arm_id} × ${cross.b.arm_id}, ` : ""}${size} ${ctx.revival ? `revival of ${ctx.revival.root}, ` : ""}mutation of ${parent.arm_id} as ${prs.map((p) => `#${p.number}`).join(" + ")}: ${hyp.title}. ${hyp.hypothesis}`);
       return armId;
     } catch (e) {
       // Keep the progress for the next cycle (usage limit, GitHub outage, crash), unless it keeps failing.

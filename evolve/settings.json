@@ -127,6 +127,11 @@
     "mobileDevice": "iPhone 15",
     "mcpCommand": "playwright-mcp"
   },
+  "crossover": {
+    "enabled": true,
+    "perCycle": 1,
+    "minPBeat": 0.5
+  },
   "seeds": {
     "maxDeaths": 3,
     "minScore": 0.12,

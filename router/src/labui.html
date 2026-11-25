@@ -339,6 +339,7 @@ function armTip(a) {
     ${s ? `<div class="t-row"><span>Visitors (14 days)</span><b>${s.trials}</b></div><div class="t-row"><span>Success rate</span><b>${s.trials ? pct(s.successes / s.trials, 1) : "–"}</b></div>` : ""}
     ${D.sims && D.sims[a.arm_id] ? `<div class="t-row"><span>Simulated people (14 days)</span><b>${D.sims[a.arm_id].successes} of ${D.sims[a.arm_id].trials} succeeded</b></div>` : ""}
     ${a.revived_from ? `<div class="t-row"><span>Revival of</span><b class="mono">${esc(a.revived_from)}</b></div>` : ""}
+    ${a.crossed_from ? `<div class="t-row"><span>Crossover of</span><b class="mono">${esc(a.crossed_from.replace(",", " × "))}</b></div>` : ""}
     ${D.pb[a.arm_id] != null ? `<div class="t-row"><span>Chance it's best</span><b>${pct(D.pb[a.arm_id])}</b></div>` : ""}
     ${a.cause ? `<div class="t-row"><span>Why it ended</span></div><div>${esc(a.cause.slice(0, 160))}</div>` : ""}`;
 }
@@ -784,7 +785,7 @@ const KIND = {
   spawn: ["Born", "var(--st-live)"], reject: ["Stillborn", "var(--st-stillborn)"], promote: ["Promoted", "var(--st-champion)"],
   retire: ["Retired", "var(--ink-2)"], death: ["Died", "var(--st-dead)"], stage: ["New stage", "var(--st-control)"],
   probe: ["AI probe", "var(--st-control)"], sims: ["Simulations", "var(--st-nursery)"], graduate: ["Graduated", "var(--st-live)"],
-  revive: ["Revived", "var(--st-champion)"], ideation: ["Ideas", "var(--st-nursery)"], finalist: ["Finalist", "var(--st-champion)"], progress: ["Building", "var(--st-nursery)"], indexnow: ["Indexing", "var(--ink-3)"], note: ["Note", "var(--ink-2)"], reminder: ["Reminder", "var(--st-champion)"],
+  revive: ["Revived", "var(--st-champion)"], ideation: ["Ideas", "var(--st-nursery)"], finalist: ["Finalist", "var(--st-champion)"], crossover: ["Crossover", "var(--st-champion)"], progress: ["Building", "var(--st-nursery)"], indexnow: ["Indexing", "var(--ink-3)"], note: ["Note", "var(--ink-2)"], reminder: ["Reminder", "var(--st-champion)"],
 };
 function drawJournal() {
   const kinds = ["all", ...Object.keys(KIND).filter((k) => D.journal.some((j) => j.kind === k))];
@@ -874,6 +875,7 @@ function openArm(id, quiet) {
       ${video ? `<h3>Scrolling through it on a phone</h3><video src="${mediaUrl(video)}" controls muted playsinline loop preload="metadata"></video>` : ""}
 
       ${a.finalist_of ? `<div class="cause">Finalist: <button type="button" data-arm="${esc(a.finalist_of)}" class="mono" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px">${esc(a.finalist_of)}</button> won selection after main had moved on, so its change was rebased onto main. It must confirm itself here before it is merged.</div>` : ""}
+      ${a.crossed_from ? `<div class="cause">This is a crossover: ${a.crossed_from.split(",").map((id) => `<button type="button" data-arm="${esc(id)}" class="mono" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px">${esc(id)}</button>`).join(" × ")} each beat the champion on their own, so the engine combined them to test both together.</div>` : ""}
       ${a.revived_from ? `<div class="cause">This is a revival of <button type="button" data-arm="${esc(a.revived_from)}" class="mono" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px">${esc(a.revived_from)}</button>, an idea that died earlier and was brought back from the seed bank.</div>` : ""}
       ${a.issue ? `<p class="muted" style="font-size:14px">Implements backlog item <a href="https://github.com/${D.repo}/issues/${a.issue}" target="_blank" rel="noopener">#${a.issue}</a>.</p>` : ""}
       ${(() => { const rs = (D.simRuns || []).filter((r) => r.arm_id === id); return rs.length ? `<h3>Simulated people who used it</h3><ul class="sims" id="armSims">${rs.slice(0, 12).map((r) => simCard(r, false)).join("")}</ul>` : ""; })()}

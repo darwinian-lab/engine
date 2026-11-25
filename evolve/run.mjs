@@ -489,6 +489,15 @@ async function cycle(sp) {
     const parent = arms.find((a) => a.arm_id === w.parentId) ?? (await db.first("SELECT * FROM arms WHERE species=? AND arm_id=?", [sp.id, w.parentId])) ?? champion;
     jobs.push({ parent, revival: w.revival, resume: w });
   }
+  // Crossover: combine the two most promising mutants that haven't been combined yet, so unrelated improvements
+  // that each beat the champion can be tested together instead of only against each other.
+  if (usePRs && cfg.crossover?.enabled !== false && jobs.length < toSpawn) {
+    const pair = await crossoverPair(sp, arms, champion, await realStats(), weekly);
+    if (pair) {
+      jobs.push({ parent: champion, revival: null, crossover: pair });
+      await journal(sp.id, "crossover", null, `crossing ${pair.a.arm_id} (${(pair.a.hypothesis ?? "").slice(0, 80)}) with ${pair.b.arm_id} (${(pair.b.hypothesis ?? "").slice(0, 80)})`);
+    }
+  }
   for (let i = jobs.length; i < toSpawn; i++) {
     const rv = revivals[i] ?? null;
     let revival = null;
@@ -508,7 +517,7 @@ async function cycle(sp) {
   await Promise.all(
     Array.from({ length: Math.min(cfg.spawnConcurrency ?? 2, jobs.length) }, async () => {
       while (spawnQueue.length && !rateLimited) {
-        const { parent, revival, resume } = spawnQueue.shift();
+        const { parent, revival, resume, crossover } = spawnQueue.shift();
         try {
           if (usePRs) {
             const stg = species.stages[Math.min(st.stage, species.stages.length - 1)];
@@ -519,7 +528,7 @@ async function cycle(sp) {
               insights: await insights(sp.id), protectedFiles: species.protected ?? [], backlog: backlogText(issues),
               simFeedback: await simDigest(db, sp.id, parent.arm_id), revival,
             };
-            await pipe.spawnPR(sp, repo, species, brief, st, parent, siblings, { revival, promptCtx }, resume ?? null);
+            await pipe.spawnPR(sp, repo, species, brief, st, parent, siblings, { revival, promptCtx, crossover: crossover ?? resume?.crossover ?? null }, resume ?? null);
           } else await spawnOne(sp, repo, species, brief, st, parent, siblings, { backlog: backlogText(issues), revival });
         } catch (e) {
           if (e instanceof RateLimited) {
@@ -557,7 +566,7 @@ async function cycle(sp) {
   arms = await alive();
   const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control"), real, sims, weeklyReal: weekly, opts: sel });
   if (dec.blind) await journal(sp.id, "note", null, "no simulated person or visitor succeeded on any arm this cycle; that usually means the measurement is broken, so no one was promoted, graduated or retired");
-  ghNotice(`${sp.id} cycle`, `stage ${st.stage}, gen ${st.generation}, ${arms.length} alive, ${weekly} real visitors/wk, sim weight ${dec.lambda.toFixed(2)}, promote ${dec.promote ?? "-"}, graduate ${dec.graduate.join(",") || "-"}, retire ${dec.retire.length}`);
+  ghNotice(`${sp.id} cycle`, `stage ${st.stage}, gen ${st.generation}, ${arms.length} alive, ${weekly} real visitors/wk, sim weight ${dec.lambda.toFixed(2)}, promote ${(dec.promotions ?? []).join(",") || "-"}, graduate ${dec.graduate.join(",") || "-"}, retire ${dec.retire.length}`);
   if (!DRY && Object.keys(dec.pb).length) {
     const ids = Object.keys(dec.pb);
     await db.run(
@@ -571,51 +580,62 @@ async function cycle(sp) {
       await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=?, revivable=? WHERE species=? AND arm_id=?", [now(), r.cause, st.generation, r.score ?? 0.3, isRevivable(r.cause) ? 1 : 0, sp.id, r.arm_id]);
       await journal(sp.id, "retire", r.arm_id, r.cause);
       await pipe.closePRs(sp, a, r.cause).catch((e) => log(`closing PRs failed: ${e.message}`));
-      if (a?.status !== "champion" || dec.promote) await deleteWorker(`sp-${sp.id}-${r.arm_id}`);
+      await deleteWorker(`sp-${sp.id}-${r.arm_id}`);
     }
     for (const id of dec.graduate) {
       await db.run("UPDATE arms SET status='live', graduated_at=? WHERE species=? AND arm_id=?", [now(), sp.id, id]);
       await journal(sp.id, "graduate", id, `left the nursery for real traffic: P(better than champion)=${dec.pbeat[id].toFixed(2)} [${dec.combined[id].sims.successes}/${dec.combined[id].sims.trials} simulated]`);
     }
-    if (dec.promote && arms.find((a) => a.arm_id === dec.promote)?.prs) {
-      const winner = arms.find((a) => a.arm_id === dec.promote);
-      const outcome = await pipe.promotePR(sp, repo, species, st, winner).catch((e) => (log(`promotion failed: ${e.message}`), "failed"));
+    // Promote every clear winner, best first. The first one that merges becomes champion; main has then moved, so
+    // the others are replayed onto it as finalists and must confirm themselves once more before they merge.
+    let newChampion = null;
+    for (const id of dec.promotions ?? []) {
+      const winner = arms.find((a) => a.arm_id === id);
+      if (!winner) continue;
+      let outcome;
+      if (winner.prs) {
+        outcome = await pipe.promotePR(sp, repo, species, st, winner).catch((e) => (log(`promotion failed: ${e.message}`), "failed"));
+      } else {
+        // Legacy (pre-PR) arm: merge its branch into main normally.
+        await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
+        await must("git", ["checkout", "-q", "main"], { cwd: repo });
+        await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
+        const merged = await run("git", ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local", "merge", "--no-ff", "--no-edit", "-m", `Promote ${winner.arm_id}`, winner.git_ref], { cwd: repo });
+        if (merged.code !== 0) await run("git", ["merge", "--abort"], { cwd: repo });
+        else await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
+        outcome = merged.code === 0 ? "merged" : "failed";
+      }
       if (outcome === "finalist") {
         await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.9, revivable=0 WHERE species=? AND arm_id=?", [now(), `won, then continued as finalist ${winner.arm_id}r rebased onto main`, st.generation, sp.id, winner.arm_id]);
-        await journal(sp.id, "finalist", `${winner.arm_id}r`, `${winner.arm_id} won selection but main moved since it was bred; its change was rebased onto main and must confirm itself in the nursery before merging`);
+        await journal(sp.id, "finalist", `${winner.arm_id}r`, `${winner.arm_id} beat the champion (P=${dec.pbeat[id].toFixed(3)}) but main ${newChampion ? `now includes ${newChampion}` : "moved since it was bred"}; its change was replayed onto main and must confirm itself before merging`);
         await deleteWorker(`sp-${sp.id}-${winner.arm_id}`);
-        dec.promote = null;
-      } else if (outcome === "failed") {
-        await journal(sp.id, "note", winner.arm_id, "would have been promoted, but it could not be merged or rebased onto main cleanly; it stays a challenger");
-        dec.promote = null;
-      } else dec.mergedViaPR = true;
-    }
-    if (dec.promote && !dec.mergedViaPR) {
-      const winner = arms.find((a) => a.arm_id === dec.promote);
-      // Merge the winner into main normally: main keeps everything already on it (earlier winners, owner updates).
-      await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
-      await must("git", ["checkout", "-q", "main"], { cwd: repo });
-      await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
-      const merged = await run("git", ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local", "merge", "--no-ff", "--no-edit", "-m", `Promote ${winner.arm_id}`, winner.git_ref], { cwd: repo });
-      if (merged.code !== 0) {
-        await run("git", ["merge", "--abort"], { cwd: repo });
-        await journal(sp.id, "note", winner.arm_id, `would have been promoted, but it no longer merges cleanly into main; it stays a challenger and its idea will be re-applied on top of main later`);
-        dec.promote = null;
+        continue;
       }
-    }
-    if (dec.promote) {
-      const winner = arms.find((a) => a.arm_id === dec.promote);
-      await db.run("UPDATE arms SET status='champion', graduated_at=COALESCE(graduated_at, ?) WHERE species=? AND arm_id=?", [now(), sp.id, dec.promote]);
+      if (outcome === "failed") {
+        await journal(sp.id, "note", winner.arm_id, "beat the champion, but could not be merged or replayed onto main cleanly; it stays a challenger");
+        continue;
+      }
+      // Merged: it becomes the champion (serving main, which keeps everything merged before it).
+      const old = arms.find((a) => a.status === "champion" && a.arm_id !== winner.arm_id && a.arm_id !== newChampion) ?? (newChampion ? arms.find((a) => a.arm_id === newChampion) : null);
+      await db.run("UPDATE arms SET status='champion', graduated_at=COALESCE(graduated_at, ?) WHERE species=? AND arm_id=?", [now(), sp.id, winner.arm_id]);
+      if (old) {
+        await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.9, revivable=0 WHERE species=? AND arm_id=?", [now(), `outcompeted by ${winner.arm_id}`, st.generation, sp.id, old.arm_id]);
+        await journal(sp.id, "retire", old.arm_id, `outcompeted by ${winner.arm_id}`);
+      }
       st.generation += 1;
       await db.run("UPDATE species_state SET generation=?, updated_at=? WHERE species=?", [st.generation, now(), sp.id]);
-      await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
-      // The champion serves main (its own change plus everything already on main).
+      await must("git", ["fetch", "-q", "origin"], { cwd: repo });
+      await must("git", ["checkout", "-q", "main"], { cwd: repo });
+      await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
       await must("npm", ["install", "--no-audit", "--no-fund"], { cwd: repo, timeoutMs: 10 * 60_000 });
       await deployArm(sp, repo, winner.arm_id).catch((e) => log(`[${sp.id}] redeploying champion from main failed: ${e.message}`));
-      const c = dec.combined[dec.promote];
-      await journal(sp.id, "promote", dec.promote, `new champion: P(better than ${champion.arm_id})=${dec.pbeat[dec.promote].toFixed(3)} [${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real]; generation ${st.generation}`);
+      if (old) await deleteWorker(`sp-${sp.id}-${old.arm_id}`);
+      const c = dec.combined[id];
+      await journal(sp.id, "promote", id, `new champion: P(better than ${champion.arm_id})=${dec.pbeat[id].toFixed(3)} [${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real]; generation ${st.generation}`);
       if (winner.issue) await closeIssue(repoSlug, winner.issue, `Shipped: mutant \`${winner.arm_id}\` implemented this and became the champion.`).catch(() => {});
+      newChampion = winner.arm_id;
     }
+    dec.promote = newChampion;
   }
 
   // 4. Backlog: turn what simulated people hit and wished for into issues; ideate once a day.
@@ -642,6 +662,27 @@ async function cycle(sp) {
   await announce(sp);
   await probe(sp, species).catch((e) => log(`[${sp.id}] probe failed: ${e.message}`));
   if (rateLimited || simResults.rateLimited) throw new RateLimited("usage limit");
+}
+
+/** The two most promising PR mutants (by P(beats champion)) that have not been crossed with each other yet. */
+async function crossoverPair(sp, arms, champion, real, weekly) {
+  const sel = { ...NURSERY_DEFAULTS, ...(cfg.nursery ?? {}) };
+  const pool = arms.filter((a) => (a.status === "live" || a.status === "nursery") && a.prs && a.git_ref);
+  if (pool.length < 2 || !champion) return null;
+  const d = decideNursery({ arms: [champion, ...pool], real, sims: await simStatsFor(db, sp.id), weeklyReal: weekly, opts: sel });
+  const judged = (id) => (d.combined[id]?.sims.trials ?? 0) >= sel.minSims || (d.combined[id]?.real.trials ?? 0) >= sel.minTrials;
+  const good = pool.filter((a) => judged(a.arm_id) && (d.pbeat[a.arm_id] ?? 0) >= (cfg.crossover?.minPBeat ?? 0.5)).sort((x, y) => d.pbeat[y.arm_id] - d.pbeat[x.arm_id]);
+  const tried = (await db.all("SELECT arm_id, crossed_from FROM arms WHERE species=? AND crossed_from IS NOT NULL", [sp.id])).map((r) => ({ id: r.arm_id, from: r.crossed_from.split(",") }));
+  const related = (a, b) => (a.crossed_from ?? "").split(",").includes(b.arm_id) || (b.crossed_from ?? "").split(",").includes(a.arm_id);
+  for (let i = 0; i < good.length; i++) {
+    for (let j = i + 1; j < good.length; j++) {
+      const [a, b] = [good[i], good[j]];
+      if (related(a, b) || tried.some((t) => t.from.includes(a.arm_id) && t.from.includes(b.arm_id))) continue;
+      const brief = (x) => ({ arm_id: x.arm_id, git_ref: x.git_ref, hypothesis: x.hypothesis, prs: x.prs, pbeat: d.pbeat[x.arm_id] });
+      return { a: brief(a), b: brief(b) };
+    }
+  }
+  return null;
 }
 
 /** Codex turns simulated feedback into backlog actions. */

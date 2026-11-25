@@ -195,6 +195,7 @@ export async function snapshot(env: Env, sp: string) {
       retired_at: a.retired_at,
       cause: a.cause,
       revived_from: a.revived_from ?? null,
+      crossed_from: a.crossed_from ?? null,
       issue: a.issue ?? null,
       graduated_at: a.graduated_at ?? null,
       final_score: a.final_score ?? null,
