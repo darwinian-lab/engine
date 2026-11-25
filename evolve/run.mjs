@@ -101,15 +101,19 @@ function lineageText(rows) {
 
 async function insights(spId) {
   const since = now() - 7 * 86400_000;
-  const [custom, pages, seg] = await Promise.all([
+  const [custom, pages, seg, srcs, probes] = await Promise.all([
     db.all("SELECT name, COUNT(*) n FROM events WHERE species=? AND ts>? AND name LIKE 'c:%' GROUP BY name ORDER BY n DESC LIMIT 12", [spId, since]),
     db.all("SELECT path, COUNT(*) n FROM events WHERE species=? AND ts>? AND name='pageview' GROUP BY path ORDER BY n DESC LIMIT 12", [spId, since]),
     db.all("SELECT segment, COUNT(DISTINCT visitor) n FROM events WHERE species=? AND ts>? AND name='js_seen' GROUP BY segment", [spId, since]),
+    db.all("SELECT json_extract(props,'$.src') src, COUNT(DISTINCT visitor) n FROM events WHERE species=? AND ts>? AND name='pageview' GROUP BY src ORDER BY n DESC LIMIT 12", [spId, since]),
+    db.all("SELECT detail FROM journal WHERE species=? AND kind='probe' ORDER BY ts DESC LIMIT 6", [spId]),
   ]);
   return [
     `Visitors last 7 days by device: ${seg.map((s) => `${s.segment} ${s.n}`).join(", ") || "none"}`,
     `Top pages: ${pages.map((p) => `${p.path} (${p.n})`).join(", ") || "none"}`,
     `Custom events: ${custom.map((c) => `${c.name.slice(2)} (${c.n})`).join(", ") || "none"}`,
+    `Traffic sources (visitors): ${srcs.map((r) => `${r.src ?? "unknown"} ${r.n}`).join(", ") || "none"}`,
+    `AI search visibility probes (latest): ${probes.map((p) => p.detail).join(" | ") || "none yet"}`,
   ].join("\n");
 }
 
@@ -254,6 +258,25 @@ async function announce(sp) {
   }
 }
 
+// Weekly AI-visibility probe: ask Claude (with web search) what it would recommend for real queries,
+// and record whether this species' domain shows up. A sensor for AI-search adoption.
+async function probe(sp, species) {
+  const queries = sp.probes ?? [];
+  if (DRY || !queries.length) return;
+  const recent = await db.first("SELECT id FROM journal WHERE species=? AND kind='probe' AND ts>?", [sp.id, now() - 6.5 * 86400_000]);
+  if (recent) return;
+  const q = queries[Math.floor(Date.now() / 604800000) % queries.length]; // rotate weekly
+  const dir = path.join(cfg.workdir, ".tmp", `probe-${sp.id}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const prompt = `Search the web as a normal user would for: "${q}". Based on what you find, list the 5 websites you would recommend to that user, most recommended first. Then answer ONLY with JSON: {"recommended":["domain1",...],"mentions_${sp.domain.replace(/\W/g, "_")}":true|false}`;
+  const cmd = expand(cfg.commands.probe ?? ["claude", "-p", "{prompt}", "--model", "sonnet", "--allowedTools", "WebSearch,WebFetch", "--output-format", "text"], { prompt });
+  const r = await run(cmd[0], cmd.slice(1), { cwd: dir, timeoutMs: 8 * 60_000 });
+  const j = extractJson(r.out);
+  if (!j) return;
+  const found = (j.recommended ?? []).some((d) => String(d).includes(sp.domain));
+  await journal(sp.id, "probe", null, `"${q}": ${found ? "RECOMMENDED" : "not recommended"} (top: ${(j.recommended ?? []).slice(0, 5).join(", ")})`);
+}
+
 async function cycle(sp) {
   const repo = path.join(cfg.workdir, sp.repo);
   await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
@@ -308,6 +331,7 @@ async function cycle(sp) {
   }
 
   await announce(sp);
+  await probe(sp, species).catch((e) => log(`[${sp.id}] probe failed: ${e.message}`));
   const alive = await db.all("SELECT * FROM arms WHERE species=? AND status IN ('live','champion')", [sp.id]);
   const champion = alive.find((a) => a.status === "champion") ?? alive[0];
   if (!champion) {

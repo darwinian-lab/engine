@@ -10,11 +10,14 @@ export async function lab(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   if (!env.LAB_KEY || url.searchParams.get("key") !== env.LAB_KEY) return new Response("Not found", { status: 404 });
   const sp = env.SPECIES;
-  const [arms, stats, journal, state] = await Promise.all([
+  const [arms, stats, journal, state, sources] = await Promise.all([
     env.DB.prepare("SELECT * FROM arms WHERE species = ? ORDER BY created_at DESC LIMIT 60").bind(sp).all<any>(),
     env.DB.prepare("SELECT * FROM arm_stats WHERE species = ?").bind(sp).all<ArmStat & { revenue: number; requests: number; errors: number }>(),
     env.DB.prepare("SELECT * FROM journal WHERE species = ? OR species IS NULL ORDER BY ts DESC LIMIT 80").bind(sp).all<any>(),
     env.DB.prepare("SELECT * FROM species_state WHERE species = ?").bind(sp).first<any>(),
+    env.DB.prepare(
+      "SELECT json_extract(props,'$.src') AS src, COUNT(DISTINCT visitor) AS n FROM events WHERE species = ? AND name = 'pageview' AND ts > ? GROUP BY src ORDER BY n DESC LIMIT 20",
+    ).bind(sp, Date.now() - 7 * 86400_000).all<any>(),
   ]);
   const alive = arms.results.filter((a) => ["live", "champion", "control"].includes(a.status));
   const pb = probBest(
@@ -36,6 +39,7 @@ export async function lab(req: Request, env: Env): Promise<Response> {
 <h1>🧬 ${esc(sp)} — generation ${state?.generation ?? 0}, stage ${state?.stage ?? 0}</h1>
 <h2>Arms</h2><table><tr><th>arm</th><th>status</th><th>gen</th><th>parent</th><th>visitors</th><th>successes</th><th>rate</th><th>P(best)</th><th>revenue</th><th>errors</th><th>hypothesis</th></tr>
 ${arms.results.map(row).join("")}</table>
+<h2>Where visitors came from (7 days)</h2><table>${sources.results.map((r) => `<tr><td>${esc(r.src ?? "unknown")}</td><td>${r.n}</td></tr>`).join("") || "<tr><td>No visitors yet</td></tr>"}</table>
 <h2>Journal</h2><table>${journal.results
     .map((j) => `<tr><td>${new Date(j.ts).toISOString().slice(0, 16).replace("T", " ")}</td><td>${esc(j.kind)}</td><td>${esc(j.arm_id)}</td><td>${esc(j.detail)}</td></tr>`)
     .join("")}</table>`;

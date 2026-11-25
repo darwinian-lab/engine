@@ -208,7 +208,7 @@ export default {
     if (res.status >= 500) {
       tasks.push(logEvent(env, { arm: arm.arm_id, visitor, segment, name: "http_5xx", path: url.pathname }));
     } else if (isHtml && req.method === "GET") {
-      tasks.push(logEvent(env, { arm: arm.arm_id, visitor, segment, name: "pageview", path: url.pathname }));
+      tasks.push(logEvent(env, { arm: arm.arm_id, visitor, segment, name: "pageview", path: url.pathname, props: { src: sourceOf(req, url) } }));
     }
     if (st.cfg) {
       for (const rule of matchEvents(st.cfg, req.method, url, res.status)) {
@@ -262,6 +262,25 @@ export default {
     }
   },
 };
+
+// Where a visit came from, normalised (AI assistants are first-class sources).
+const SOURCES: [RegExp, string][] = [
+  [/chatgpt\.com|chat\.openai\.com/, "chatgpt"], [/perplexity\.ai/, "perplexity"], [/gemini\.google\.com|bard\.google/, "gemini"],
+  [/claude\.ai/, "claude"], [/copilot\.microsoft\.com|bing\.com\/chat/, "copilot"], [/(^|\.)google\./, "google"],
+  [/(^|\.)bing\.com/, "bing"], [/duckduckgo\.com/, "duckduckgo"], [/yandex\./, "yandex"], [/reddit\.com/, "reddit"],
+  [/news\.ycombinator\.com/, "hackernews"], [/(^|\.)x\.com|twitter\.com|t\.co$/, "x"], [/linkedin\.com/, "linkedin"], [/facebook\.com/, "facebook"],
+];
+export function sourceOf(req: Request, url: URL): string {
+  const utm = url.searchParams.get("utm_source") ?? url.searchParams.get("ref");
+  if (utm) return utm.toLowerCase().slice(0, 30);
+  const ref = req.headers.get("referer");
+  if (!ref) return "direct";
+  let host = "";
+  try { host = new URL(ref).hostname; } catch { return "unknown"; }
+  if (host === url.hostname) return "internal";
+  for (const [re, name] of SOURCES) if (re.test(host) || re.test(ref)) return name;
+  return host.replace(/^www\./, "").slice(0, 40);
+}
 
 export async function indexNowKey(labKey: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${labKey}:indexnow`));
