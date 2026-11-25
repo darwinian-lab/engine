@@ -30,7 +30,7 @@ function resultText(content) {
  * claude -p with live rendering. `args` are the usual claude arguments WITHOUT --output-format.
  * Returns { code, out (final result text), err, transcript }.
  */
-export async function claudeStream({ args, cwd, timeoutMs, label, transcriptDir, env, agent = true }) {
+export async function claudeStream({ args, cwd, timeoutMs, label, transcriptDir, env, agent = true, onSession = null }) {
   fs.mkdirSync(transcriptDir, { recursive: true });
   const transcript = path.join(transcriptDir, `${label.replace(/[^\w.-]+/g, "_")}-${Date.now()}.jsonl`);
   const raw = fs.createWriteStream(transcript);
@@ -38,6 +38,7 @@ export async function claudeStream({ args, cwd, timeoutMs, label, transcriptDir,
   const subagents = new Map(); // tool_use_id of a Task call → its description
   let final = "";
   let errText = "";
+  let sessionId = null;
   echo(prefix, `▶ start`);
   const r = await run("claude", [...args, "--output-format", "stream-json", "--verbose"], {
     cwd,
@@ -76,6 +77,10 @@ export async function claudeStream({ args, cwd, timeoutMs, label, transcriptDir,
           if (c.type === "tool_result") echo(p, `   ↳ ${c.is_error ? "error" : "ok"}: ${clip(resultText(c.content), 240)}`);
         }
       }
+      if (!sessionId && ev.session_id && !ev.parent_tool_use_id) {
+        sessionId = ev.session_id;
+        Promise.resolve(onSession?.(sessionId)).catch(() => {});
+      }
       if (ev.type === "result") {
         final = ev.result ?? "";
         echo(prefix, `■ ${ev.subtype ?? "done"} in ${ev.num_turns ?? "?"} turns, ${Math.round((ev.duration_ms ?? 0) / 1000)} s`);
@@ -83,5 +88,5 @@ export async function claudeStream({ args, cwd, timeoutMs, label, transcriptDir,
     },
   });
   raw.end();
-  return { code: r.code, out: final || "", err: errText + r.err, transcript };
+  return { code: r.code, out: final || "", err: errText + r.err, transcript, sessionId };
 }

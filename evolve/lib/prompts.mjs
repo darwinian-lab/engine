@@ -238,7 +238,7 @@ make real visitors more likely to succeed or come back. Answer with ONLY JSON:
 
 export function hypothesisPrompt(ctx) {
   const body = mutationPrompt(ctx).split("## Your mutation")[0];
-  return `${body}## Your job: choose this mutation's hypothesis and plan how to build it (do not write code)
+  return `${body}## Your job: choose this mutation's hypothesis (do not write code)
 
 You are the first step of building one mutant. Study the repository (CLAUDE.md, CHARTER.md, BRIEF.md, LESSONS.md and
 the code), then choose ONE hypothesis about what would make more real people succeed. Size: ${ctx.size}.
@@ -248,12 +248,11 @@ Pick a direction different from the siblings. Be concrete enough that a separate
 Answer with ONLY a JSON object:
 {"title": "max 8 words", "hypothesis": "what changes and why it should help real people (2-3 sentences)",
  "work_item": "the full work description for the builders: user-visible behaviour, scope, out of scope, constraints, risks",
- "plan": "the implementation plan a capable but less senior engineer can follow without rethinking the design: which files and routes change, data/migration changes, UI states, the order of steps, what to test, pitfalls in this codebase. Read the code you need to make it concrete.",
  "acceptance_criteria": ["observable criteria"], "implements_issue": <issue number or null>, "size": "small|medium|large"}`;
 }
 
 export function buildPrompt({ workItemFile, baseSha, branch, runDir }) {
-  return `Use the evolve-to-prs skill (installed in your skills) to implement the work item in ${workItemFile}. It includes a plan made by a senior planner: follow it, and only deviate when the code proves it wrong (note why in result.json assumptions).
+  return `Use the evolve-to-prs skill (installed in your skills) to implement the work item in ${workItemFile}.
 
 - Repository: the current directory (clean worktree at the base).
 - Base SHA: ${baseSha}

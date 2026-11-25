@@ -21,11 +21,12 @@ export function makePipeline(d) {
   const LIMIT_RE = /hit your [\w -]*limit|usage limit|rate.?limit|limit reached|quota|credit balance/i;
 
   /** A Claude Code agent with no secrets in its environment. */
-  async function agent({ cwd, prompt, model, tools, browser = false, web = false, minutes = 30, json = false, label = "agent" }) {
+  async function agent({ cwd, prompt, model, tools, browser = false, web = false, minutes = 30, json = false, label = "agent", resume = null, onSession = null }) {
     fs.mkdirSync(path.join(cwd, ".dw"), { recursive: true });
     const promptFile = path.join(cwd, ".dw", `prompt-${rid(6)}.md`);
     fs.writeFileSync(promptFile, prompt);
-    const args = ["-p", `Read the file ${promptFile} and carry out the instructions in it exactly. Work autonomously until done.`, "--model", model, "--permission-mode", "acceptEdits"];
+    const args = ["-p", resume ? prompt : `Read the file ${promptFile} and carry out the instructions in it exactly. Work autonomously until done.`, "--model", model, "--permission-mode", "acceptEdits"];
+    if (resume) args.push("--resume", resume);
     const allowed = [...tools];
     if (browser) {
       const mcp = path.join(cwd, ".dw", `mcp-${rid(6)}.json`);
@@ -37,7 +38,7 @@ export function makePipeline(d) {
     if (web) allowed.push(...DOC_DOMAINS.map((dom) => `WebFetch(domain:${dom})`));
     args.push("--allowedTools", allowed.join(","), "--disallowedTools", "Bash(git push:*),Bash(git remote:*),Bash(curl:*),Bash(wget:*)");
     // Each agent gets its own local dev-server port so parallel builders don't collide.
-    const r = await claudeStream({ args, cwd, label, timeoutMs: minutes * 60_000, transcriptDir: path.join(cfg.workdir, ".tmp", "transcripts"), env: { DW_DEV_PORT: String(8800 + Math.floor(Math.random() * 900)) } });
+    const r = await claudeStream({ args, cwd, label, onSession, timeoutMs: minutes * 60_000, transcriptDir: path.join(cfg.workdir, ".tmp", "transcripts"), env: { DW_DEV_PORT: String(8800 + Math.floor(Math.random() * 900)) } });
     const text = r.out + r.err;
     if (LIMIT_RE.test(r.out) || (r.code !== 0 && LIMIT_RE.test(text))) throw new RateLimited(text.slice(-500));
     return json ? extractJson(r.out) : r;
@@ -48,12 +49,63 @@ export function makePipeline(d) {
 
   const commitsOf = async (wt, base, head) => (await run("git", ["log", "--format=%h %s", `${base}..${head}`], { cwd: wt })).out.trim();
 
+
+  const CLAUDE_PROJECTS = path.join(process.env.HOME ?? "", ".claude", "projects");
+
+  /** Save a mutant's progress (branch, run folder, agent sessions) so the next cycle can pick it up. */
+  async function saveWip(repo, wt, runDir, wip, branch) {
+    fs.mkdirSync(wip.dir, { recursive: true });
+    const hasBranch = (await run("git", ["rev-parse", "--verify", "-q", `refs/heads/${branch}`], { cwd: repo })).code === 0;
+    if (hasBranch && fs.existsSync(wt)) {
+      const onBranch = (await run("git", ["symbolic-ref", "-q", "--short", "HEAD"], { cwd: wt })).out.trim() === branch;
+      if (onBranch && (await run("git", ["status", "--porcelain"], { cwd: wt })).out.trim()) {
+        await run("git", ["add", "-A"], { cwd: wt });
+        await run("git", [...GIT_ID, "commit", "-q", "--no-verify", "-m", "Work in progress (interrupted)"], { cwd: wt });
+      }
+    }
+    const baseRef = `refs/dw/${wip.state.armId}/base`;
+    if (wip.state.baseSha) await run("git", ["update-ref", baseRef, wip.state.baseSha], { cwd: repo });
+    const refs = [wip.state.baseSha ? baseRef : null, hasBranch ? `refs/heads/${branch}` : null].filter(Boolean);
+    if (refs.length) await must("git", ["bundle", "create", path.join(wip.dir, "repo.bundle"), ...refs], { cwd: repo });
+    if (fs.existsSync(runDir)) {
+      fs.rmSync(path.join(wip.dir, "run"), { recursive: true, force: true });
+      fs.cpSync(runDir, path.join(wip.dir, "run"), { recursive: true, filter: (src) => !src.includes(`${path.sep}node_modules`) });
+    }
+    const id = wip.state.buildSession;
+    if (id && fs.existsSync(CLAUDE_PROJECTS)) {
+      for (const proj of fs.readdirSync(CLAUDE_PROJECTS)) {
+        for (const name of [`${id}.jsonl`, id]) {
+          const src = path.join(CLAUDE_PROJECTS, proj, name);
+          if (fs.existsSync(src)) fs.cpSync(src, path.join(wip.dir, "claude", proj, name), { recursive: true });
+        }
+      }
+    }
+    fs.writeFileSync(path.join(wip.dir, "state.json"), JSON.stringify(wip.state, null, 2));
+  }
+
+  function restoreSessions(wipDir) {
+    const saved = path.join(wipDir, "claude");
+    if (fs.existsSync(saved)) fs.cpSync(saved, CLAUDE_PROJECTS, { recursive: true });
+  }
+
+  /** Mutants interrupted in earlier cycles, oldest first. */
+  function pendingWip(spId) {
+    const root = path.join(cfg.workdir, "wip");
+    if (!fs.existsSync(root)) return [];
+    return fs.readdirSync(root)
+      .filter((d) => d.startsWith(`${spId}-`) && fs.existsSync(path.join(root, d, "state.json")))
+      .map((d) => JSON.parse(fs.readFileSync(path.join(root, d, "state.json"), "utf8")))
+      .filter((w) => now() - (w.created ?? 0) < 3 * 86400_000)
+      .sort((a, b) => (a.created ?? 0) - (b.created ?? 0));
+  }
+
   /** Breed one mutant through the PR pipeline. Returns the arm id or null. */
-  async function spawnPR(sp, repo, species, brief, st, parent, siblings, ctx) {
+  async function spawnPR(sp, repo, species, brief, st, parent, siblings, ctx, resume = null) {
     const repoSlug = `${cfg.github.org}/${sp.repo}`;
-    const armId = `g${st.generation + 1}-${rid()}`;
+    const armId = resume?.armId ?? `g${st.generation + 1}-${rid()}`;
     const prefix = `arm/${armId}`;
-    const size = mutationSize();
+    const size = resume?.size ?? mutationSize();
+    const wip = { dir: path.join(cfg.workdir, "wip", `${sp.id}-${armId}`), state: resume ?? { armId, species: sp.id, parentId: parent.arm_id, size, revival: ctx.revival ?? null, attempts: 0, created: now() } };
     const wt = path.join(cfg.workdir, "wt", `${sp.id}-${armId}`);
     const runDir = path.join(cfg.workdir, ".tmp", "runs", `${sp.id}-${armId}`);
     fs.mkdirSync(runDir, { recursive: true });
@@ -61,35 +113,62 @@ export function makePipeline(d) {
     const parentPrs = parent.prs ? JSON.parse(parent.prs) : null;
     const baseRef = parentIsChampion ? "origin/main" : parent.git_ref || "origin/main";
     const baseBranch = parentIsChampion ? "main" : parentPrs?.at(-1)?.branch ?? `arm/${parent.arm_id}`;
-    log(`[${sp.id}] PR pipeline: ${armId} from ${parent.arm_id} (${size})`);
-    await gitLock(() => must("git", ["worktree", "add", "--detach", wt, baseRef], { cwd: repo }));
+    log(`[${sp.id}] PR pipeline: ${armId} from ${parent.arm_id} (${size})${resume ? `, resuming attempt ${resume.attempts + 1} at "${resume.stage}"` : ""}`);
+    let keepWip = false;
+    if (resume) {
+      // Bring back the saved branch, run folder and agent session, then carry on where it stopped.
+      await gitLock(async () => {
+        await run("git", ["fetch", "-q", path.join(wip.dir, "repo.bundle"), "+refs/*:refs/*"], { cwd: repo });
+        await must("git", ["worktree", "add", "--detach", wt, resume.baseSha], { cwd: repo });
+      });
+      if ((await run("git", ["rev-parse", "--verify", "-q", `refs/heads/${prefix}`], { cwd: repo })).code === 0) await run("git", ["checkout", "-q", prefix], { cwd: wt });
+      if (fs.existsSync(path.join(wip.dir, "run"))) fs.cpSync(path.join(wip.dir, "run"), runDir, { recursive: true });
+      restoreSessions(wip.dir);
+    } else await gitLock(() => must("git", ["worktree", "add", "--detach", wt, baseRef], { cwd: repo }));
     try {
-      for (const p of species.protected ?? []) await run("git", ["checkout", "origin/main", "--", p.replace(/\/$/, "")], { cwd: wt });
-      if ((await run("git", ["status", "--porcelain"], { cwd: wt })).out.trim()) {
-        await run("git", ["add", "-A"], { cwd: wt });
-        await must("git", [...GIT_ID, "commit", "-q", "-m", "Sync protected files from main"], { cwd: wt });
+      if (!resume) {
+        for (const p of species.protected ?? []) await run("git", ["checkout", "origin/main", "--", p.replace(/\/$/, "")], { cwd: wt });
+        if ((await run("git", ["status", "--porcelain"], { cwd: wt })).out.trim()) {
+          await run("git", ["add", "-A"], { cwd: wt });
+          await must("git", [...GIT_ID, "commit", "-q", "-m", "Sync protected files from main"], { cwd: wt });
+        }
       }
-      const baseSha = (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim();
+      const baseSha = resume?.baseSha ?? (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim();
+      Object.assign(wip.state, { baseSha, baseBranch, stage: wip.state.stage ?? "hypothesis" });
       fs.symlinkSync(path.join(repo, "node_modules"), path.join(wt, "node_modules"));
       fs.appendFileSync(path.join(repo, ".git", "info", "exclude"), "\n.dw/\nnode_modules\n.wrangler/\n");
+      const checkpoint = async (stage, extra = {}) => {
+        Object.assign(wip.state, extra, stage ? { stage } : {});
+        await saveWip(repo, wt, runDir, wip, prefix);
+      };
 
       // 1. Hypothesis: what to build and why.
-      const hyp = await agent({ label: `${sp.id}/${armId} hypothesis`, cwd: wt, prompt: hypothesisPrompt({ ...ctx.promptCtx, size }), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 25, json: true });
+      const hyp = wip.state.hyp ?? await agent({ label: `${sp.id}/${armId} hypothesis`, cwd: wt, prompt: hypothesisPrompt({ ...ctx.promptCtx, size }), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 15, json: true });
       if (!hyp?.work_item) {
         await journal(sp.id, "reject", armId, "hypothesis step produced no work item");
         return null;
       }
       const revivalNote = ctx.revival ? `\n\n## This is a revival\nAn earlier mutant tried this idea and died (${ctx.revival.cause}). Re-implement the same idea on the current code and avoid what killed it.\n\n${ctx.revival.mutation}` : "";
-      const workItem = `# ${hyp.title}\n\n**Hypothesis:** ${hyp.hypothesis}\n${hyp.implements_issue ? `\n**Implements:** #${hyp.implements_issue}\n` : ""}\n## Work item\n${hyp.work_item}\n${hyp.plan ? `\n## Plan\n${hyp.plan}\n` : ""}\n## Acceptance criteria\n${(hyp.acceptance_criteria ?? []).map((c) => `- ${c}`).join("\n")}${revivalNote}\n`;
+      const workItem = `# ${hyp.title}\n\n**Hypothesis:** ${hyp.hypothesis}\n${hyp.implements_issue ? `\n**Implements:** #${hyp.implements_issue}\n` : ""}\n## Work item\n${hyp.work_item}\n\n## Acceptance criteria\n${(hyp.acceptance_criteria ?? []).map((c) => `- ${c}`).join("\n")}${revivalNote}\n`;
       const workItemFile = path.join(runDir, "work-item.md");
       fs.writeFileSync(workItemFile, workItem);
+      await checkpoint("build", { hyp });
       ghNotice(`${sp.id} ${armId} hypothesis`, `${hyp.title}: ${hyp.hypothesis}`);
       await journal(sp.id, "progress", armId, `hypothesis chosen: ${hyp.title}. ${hyp.hypothesis}${hyp.implements_issue ? ` (implements #${hyp.implements_issue})` : ""}; building it now`);
 
       // 2. Build with evolve-to-prs: one mutation, one branch, one PR.
       const branch = prefix;
-      await agent({ label: `${sp.id}/${armId} build`, cwd: wt, prompt: buildPrompt({ workItemFile, baseSha, branch, runDir }), model: cfg.models.mutate ?? "opus", tools: [...CODE_TOOLS, "Task", "TodoWrite"], browser: true, web: true, minutes: cfg.timeouts?.buildMin ?? 150 });
       const resultFile = path.join(runDir, "result.json");
+      if (!(resume && fs.existsSync(resultFile) && wip.state.stage !== "build")) {
+        const buildArgs = { label: `${sp.id}/${armId} build`, cwd: wt, model: cfg.models.mutate ?? "sonnet", tools: [...CODE_TOOLS, "Task", "TodoWrite"], browser: true, web: true, minutes: cfg.timeouts?.buildMin ?? 150, onSession: (id) => checkpoint(null, { buildSession: id }) };
+        if (resume && wip.state.buildSession) {
+          await agent({ ...buildArgs, resume: wip.state.buildSession, prompt: `You were interrupted (usage limit, outage or crash) and this session has been restored. Continue the work exactly where you left off: check git status, git log and the run folder ${runDir} (run-config.md, completion notes, reviews), finish the remaining phases, and write ${resultFile} last as the skill describes.` });
+        } else {
+          const note = resume ? `\n\nAn earlier attempt was interrupted. Its commits are on branch ${prefix} and its notes are in ${runDir}. Continue from them instead of starting over.` : "";
+          await agent({ ...buildArgs, prompt: buildPrompt({ workItemFile, baseSha, branch: prefix, runDir }) + note });
+        }
+        await checkpoint("checks");
+      }
       const result = fs.existsSync(resultFile) ? (() => { try { return JSON.parse(fs.readFileSync(resultFile, "utf8")); } catch { return {}; } })() : {};
       const mutationText = `${workItem}\n## Built\n${result.summary ?? ""}`;
       const built = (await run("git", ["rev-parse", "--verify", "-q", branch], { cwd: wt })).code === 0 && (await run("git", ["rev-list", "--count", `${baseSha}..${branch}`], { cwd: wt })).out.trim() !== "0";
@@ -118,10 +197,12 @@ export function makePipeline(d) {
       // 4. Publish the PR (the engine pushes; agents never hold credentials).
       await gitLock(() => must("git", ["push", "-q", "-f", "origin", `HEAD:refs/heads/${branch}`], { cwd: wt }));
       const prBody = `${result.summary ?? ""}\n\n---\n**Mutant** \`${armId}\` (${size}, parent \`${parent.arm_id}\`)${ctx.revival ? `, revival of \`${ctx.revival.root}\`` : ""}\n\n**Hypothesis:** ${hyp.hypothesis}${hyp.implements_issue ? `\n\nPart of #${hyp.implements_issue}` : ""}\n\n_Built and reviewed by the Darwinian engine; merged only if it wins selection._`;
+      await checkpoint("pr");
       const opened = await openPR(repoSlug, { base: baseBranch, head: branch, title: result.title ?? hyp.title, body: prBody });
       const topPr = { ...opened, branch, base: baseBranch, head: (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim(), title: result.title ?? hyp.title };
       const prs = [topPr];
       await journal(sp.id, "progress", armId, `opened ${topPr.url}; automated review starting`);
+      await checkpoint("review", { pr: topPr });
       const prBodies = prBody;
 
       // 5. Automated PR review: Codex (charter) + a fresh Claude reviewer, feedback commits, up to N rounds.
@@ -207,7 +288,19 @@ export function makePipeline(d) {
       if (issueNo) await comment(repoSlug, issueNo, `Mutant \`${armId}\` is trying this: ${topPr.url}`).catch(() => {});
       await journal(sp.id, "spawn", armId, `${size} ${ctx.revival ? `revival of ${ctx.revival.root}, ` : ""}mutation of ${parent.arm_id} as ${prs.map((p) => `#${p.number}`).join(" + ")}: ${hyp.title}. ${hyp.hypothesis}`);
       return armId;
+    } catch (e) {
+      // Keep the progress for the next cycle (usage limit, GitHub outage, crash), unless it keeps failing.
+      if (wip.state.hyp && !DRY) {
+        wip.state.attempts++;
+        wip.state.lastError = String(e.message ?? e).slice(0, 500);
+        if (wip.state.attempts < (cfg.wipMaxAttempts ?? 3)) {
+          keepWip = await saveWip(repo, wt, runDir, wip, prefix).then(() => true, (err) => (log(`save progress: ${err.message}`), false));
+          await journal(sp.id, "progress", armId, `interrupted at "${wip.state.stage}" (${wip.state.lastError.slice(0, 200)}); progress saved, resumes next cycle`).catch(() => {});
+        }
+      }
+      throw e;
     } finally {
+      if (!keepWip) fs.rmSync(wip.dir, { recursive: true, force: true });
       await gitLock(() => run("git", ["worktree", "remove", "--force", wt], { cwd: repo }));
       await run("git", ["worktree", "prune"], { cwd: repo });
     }
@@ -301,5 +394,5 @@ export function makePipeline(d) {
     await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
   }
 
-  return { spawnPR, closePRs, promotePR, updateLessons, agent };
+  return { spawnPR, closePRs, promotePR, updateLessons, agent, pendingWip };
 }

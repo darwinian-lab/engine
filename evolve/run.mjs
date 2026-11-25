@@ -476,7 +476,13 @@ async function cycle(sp) {
   const dead = await db.all("SELECT * FROM arms WHERE species=? AND status IN ('retired','stillborn','dead') AND mutation IS NOT NULL", [sp.id]);
   const revivals = toSpawn ? pickRevivals({ dead, alive: arms, gen: st.generation, opts: cfg.seeds ?? {} }) : [];
   const jobs = [];
-  for (let i = 0; i < toSpawn; i++) {
+  // Interrupted mutants from earlier cycles go first and use up spawn slots.
+  const usePRs = (argv("--pipeline") ?? cfg.pipeline ?? "prs") === "prs";
+  for (const w of usePRs && toSpawn ? pipe.pendingWip(sp.id).slice(0, toSpawn) : []) {
+    const parent = arms.find((a) => a.arm_id === w.parentId) ?? (await db.first("SELECT * FROM arms WHERE species=? AND arm_id=?", [sp.id, w.parentId])) ?? champion;
+    jobs.push({ parent, revival: w.revival, resume: w });
+  }
+  for (let i = jobs.length; i < toSpawn; i++) {
     const rv = revivals[i] ?? null;
     let revival = null;
     if (rv) {
@@ -495,9 +501,9 @@ async function cycle(sp) {
   await Promise.all(
     Array.from({ length: Math.min(cfg.spawnConcurrency ?? 2, jobs.length) }, async () => {
       while (spawnQueue.length && !rateLimited) {
-        const { parent, revival } = spawnQueue.shift();
+        const { parent, revival, resume } = spawnQueue.shift();
         try {
-          if ((argv("--pipeline") ?? cfg.pipeline ?? "prs") === "prs") {
+          if (usePRs) {
             const stg = species.stages[Math.min(st.stage, species.stages.length - 1)];
             const lineageRows = await db.all("SELECT * FROM arms WHERE species=? AND status NOT IN ('control','stillborn') ORDER BY created_at DESC LIMIT 25", [sp.id]);
             const promptCtx = {
@@ -506,7 +512,7 @@ async function cycle(sp) {
               insights: await insights(sp.id), protectedFiles: species.protected ?? [], backlog: backlogText(issues),
               simFeedback: await simDigest(db, sp.id, parent.arm_id), revival,
             };
-            await pipe.spawnPR(sp, repo, species, brief, st, parent, siblings, { revival, promptCtx });
+            await pipe.spawnPR(sp, repo, species, brief, st, parent, siblings, { revival, promptCtx }, resume ?? null);
           } else await spawnOne(sp, repo, species, brief, st, parent, siblings, { backlog: backlogText(issues), revival });
         } catch (e) {
           if (e instanceof RateLimited) {

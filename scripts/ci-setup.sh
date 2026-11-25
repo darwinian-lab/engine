@@ -28,4 +28,5 @@ done
 
 # Skills the engine's agents use (evolve-to-prs: autonomous adaptation of work-to-prs).
 mkdir -p ~/.claude/skills && cp -r skills/* ~/.claude/skills/
+mkdir -p "$WORK/wip"
 echo "DW_WORKDIR=$WORK" >> "$GITHUB_ENV"

@@ -28,6 +28,12 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: scripts/ci-setup.sh
+      - name: Restore interrupted mutants
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.DW_WORKDIR }}/wip
+          key: wip-${{ github.run_id }}
+          restore-keys: wip-
       - name: Evolve
         run: |
           ARGS=""
@@ -38,6 +44,12 @@ jobs:
           node evolve/run.mjs $ARGS
       - if: always()
         run: scripts/ci-finish.sh
+      - name: Save interrupted mutants
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.DW_WORKDIR }}/wip
+          key: wip-${{ github.run_id }}-${{ github.run_attempt }}
       - if: always()
         uses: actions/upload-artifact@v4
         with:
