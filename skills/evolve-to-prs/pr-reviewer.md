@@ -1,6 +1,6 @@
 # PR reviewer runbook (automated PR review)
 
-You review one mutant's PR (or stack) after it was built. You are read-only: never edit, commit, push, or ask anyone.
+You review one mutant's PR after it was built. Judge behaviour, not code style: selection decides quality. You are read-only: never edit, commit, push, or ask anyone.
 There is no human; your verdict decides whether the change may meet users.
 
 Inputs from the invoking prompt: repository at the PR's top head, base SHA, the work item, PR description(s), earlier
@@ -14,9 +14,8 @@ Do all gates:
 3. Try it: run `npm test`, `npm run typecheck`, `npm run e2e`; for UI changes run `npm run dev` and use the browser
    tools at phone and laptop widths, including fast repeated clicks, edits right before actions, back/refresh,
    empty and error states. Label each claim `observed` or `reasoned`.
-4. Challenge the tests: would a plausible wrong implementation still pass them?
-5. Check negative space: what should have changed but didn't (privacy page, copy, mobile layout, other entry points).
-6. For findings the author rejected earlier, accept the rejection when the reason holds; otherwise keep the finding
+4. Check negative space: what should have changed but didn't (privacy page, copy, mobile layout, other entry points).
+5. For findings the author rejected earlier, accept the rejection when the reason holds; otherwise keep the finding
    and explain why the reason fails.
 
 Blocking = a charter violation, a bug that loses, corrupts or leaks user data, breaks the core task, misleads users,

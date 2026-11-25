@@ -9,6 +9,7 @@ import { gate } from "./lib/gates.mjs";
 import { hypothesisPrompt, buildPrompt, prReviewPrompt, addressPrompt, auditPrompt, repairPrompt, lessonsPrompt } from "./lib/prompts.mjs";
 import { mutationSize } from "./lib/select.mjs";
 import { parseImplements, comment } from "./lib/issues.mjs";
+import { openPR, commentPR, closePR } from "./lib/ghpr.mjs";
 
 const DOC_DOMAINS = ["hono.dev", "developers.cloudflare.com", "clerk.com", "developer.mozilla.org", "web.dev", "playwright.dev"];
 const GIT_ID = ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local"];
@@ -73,30 +74,32 @@ export function makePipeline(d) {
       fs.appendFileSync(path.join(repo, ".git", "info", "exclude"), "\n.dw/\nnode_modules\n.wrangler/\n");
 
       // 1. Hypothesis: what to build and why.
-      const hyp = await agent({ label: `${sp.id}/${armId} hypothesis`, cwd: wt, prompt: hypothesisPrompt({ ...ctx.promptCtx, size }), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 15, json: true });
+      const hyp = await agent({ label: `${sp.id}/${armId} hypothesis`, cwd: wt, prompt: hypothesisPrompt({ ...ctx.promptCtx, size }), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 25, json: true });
       if (!hyp?.work_item) {
         await journal(sp.id, "reject", armId, "hypothesis step produced no work item");
         return null;
       }
       const revivalNote = ctx.revival ? `\n\n## This is a revival\nAn earlier mutant tried this idea and died (${ctx.revival.cause}). Re-implement the same idea on the current code and avoid what killed it.\n\n${ctx.revival.mutation}` : "";
-      const workItem = `# ${hyp.title}\n\n**Hypothesis:** ${hyp.hypothesis}\n${hyp.implements_issue ? `\n**Implements:** #${hyp.implements_issue}\n` : ""}\n## Work item\n${hyp.work_item}\n\n## Acceptance criteria\n${(hyp.acceptance_criteria ?? []).map((c) => `- ${c}`).join("\n")}${revivalNote}\n`;
+      const workItem = `# ${hyp.title}\n\n**Hypothesis:** ${hyp.hypothesis}\n${hyp.implements_issue ? `\n**Implements:** #${hyp.implements_issue}\n` : ""}\n## Work item\n${hyp.work_item}\n${hyp.plan ? `\n## Plan\n${hyp.plan}\n` : ""}\n## Acceptance criteria\n${(hyp.acceptance_criteria ?? []).map((c) => `- ${c}`).join("\n")}${revivalNote}\n`;
       const workItemFile = path.join(runDir, "work-item.md");
       fs.writeFileSync(workItemFile, workItem);
       ghNotice(`${sp.id} ${armId} hypothesis`, `${hyp.title}: ${hyp.hypothesis}`);
       await journal(sp.id, "progress", armId, `hypothesis chosen: ${hyp.title}. ${hyp.hypothesis}${hyp.implements_issue ? ` (implements #${hyp.implements_issue})` : ""}; building it now`);
 
-      // 2. Build with evolve-to-prs.
-      await agent({ label: `${sp.id}/${armId} build`, cwd: wt, prompt: buildPrompt({ workItemFile, baseSha, prefix, runDir }), model: cfg.models.mutate ?? "opus", tools: [...CODE_TOOLS, "Task", "TodoWrite"], browser: true, web: true, minutes: cfg.timeouts?.buildMin ?? 150 });
-      const result = JSON.parse(fs.existsSync(path.join(runDir, "result.json")) ? fs.readFileSync(path.join(runDir, "result.json"), "utf8") : '{"parts":[]}');
+      // 2. Build with evolve-to-prs: one mutation, one branch, one PR.
+      const branch = prefix;
+      await agent({ label: `${sp.id}/${armId} build`, cwd: wt, prompt: buildPrompt({ workItemFile, baseSha, branch, runDir }), model: cfg.models.mutate ?? "opus", tools: [...CODE_TOOLS, "Task", "TodoWrite"], browser: true, web: true, minutes: cfg.timeouts?.buildMin ?? 150 });
+      const resultFile = path.join(runDir, "result.json");
+      const result = fs.existsSync(resultFile) ? (() => { try { return JSON.parse(fs.readFileSync(resultFile, "utf8")); } catch { return {}; } })() : {};
       const mutationText = `${workItem}\n## Built\n${result.summary ?? ""}`;
-      if (!result.parts?.length) {
+      const built = (await run("git", ["rev-parse", "--verify", "-q", branch], { cwd: wt })).code === 0 && (await run("git", ["rev-list", "--count", `${baseSha}..${branch}`], { cwd: wt })).out.trim() !== "0";
+      if (!built) {
         await journal(sp.id, "reject", armId, `nothing was built: ${String(result.summary ?? "no result").slice(0, 600)}`);
-        await stillborn(sp, armId, parent, st, `the builders produced no PR: ${String(result.summary ?? "no result").slice(0, 500)}`, { mutation: mutationText, size, revivedFrom: ctx.revival?.root });
+        await stillborn(sp, armId, parent, st, `the builder produced nothing: ${String(result.summary ?? "no result").slice(0, 500)}`, { mutation: mutationText, size, revivedFrom: ctx.revival?.root });
         return null;
       }
-      await journal(sp.id, "progress", armId, `built in ${result.phases ?? "?"} phase(s) as ${result.parts.length} PR part(s); running checks`);
-      const top = result.parts.at(-1);
-      await must("git", ["checkout", "-q", top.branch], { cwd: wt });
+      await must("git", ["checkout", "-q", branch], { cwd: wt });
+      await journal(sp.id, "progress", armId, `built (${(await commitsOf(wt, baseSha, "HEAD")).split("\n").length} commits); running checks`);
 
       // 3. Viability gates on the top head (protected files, tests, typecheck, build, end-to-end).
       let g = await gate(wt, baseSha, species, { requireMutationFile: false });
@@ -112,24 +115,14 @@ export function makePipeline(d) {
         return null;
       }
 
-      // 4. Publish the PRs (the engine pushes; agents never hold credentials).
-      const prs = [];
-      for (let i = 0; i < result.parts.length; i++) {
-        const part = result.parts[i];
-        const head = (await must("git", ["rev-parse", part.branch], { cwd: wt })).trim();
-        await gitLock(() => must("git", ["push", "-q", "-f", "origin", `${part.branch}:refs/heads/${part.branch}`], { cwd: wt }));
-        const body = `${fs.existsSync(part.description_file ?? "") ? fs.readFileSync(part.description_file, "utf8") : result.summary ?? ""}\n\n---\n**Mutant** \`${armId}\` (${size}, parent \`${parent.arm_id}\`)${ctx.revival ? `, revival of \`${ctx.revival.root}\`` : ""}\n\n**Hypothesis:** ${hyp.hypothesis}${hyp.implements_issue ? `\n\nPart of #${hyp.implements_issue}` : ""}\n\n_Built and reviewed by the Darwinian engine; merged only if it wins selection._`;
-        const bodyFile = path.join(runDir, `pr-body-${i + 1}.md`);
-        fs.writeFileSync(bodyFile, body);
-        const base = i === 0 ? baseBranch : result.parts[i - 1].branch;
-        const r = await gh(["pr", "create", "-R", repoSlug, "--draft", "--base", base, "--head", part.branch, "--title", `${part.title ?? hyp.title}${result.parts.length > 1 ? ` (${i + 1}/${result.parts.length})` : ""}`, "--body-file", bodyFile]);
-        const url = r.out.trim().split("\n").pop();
-        if (!/\/pull\/\d+/.test(url)) throw new Error(`gh pr create failed: ${(r.err || r.out).slice(-400)}`);
-        prs.push({ number: Number(url.split("/pull/")[1]), url, branch: part.branch, base, head, title: part.title ?? hyp.title });
-      }
-      const topPr = prs.at(-1);
-      await journal(sp.id, "progress", armId, `opened ${prs.map((p) => p.url).join(", ")}; automated review starting`);
-      const prBodies = prs.map((p, i) => `### PR ${i + 1}: ${p.title}\n${fs.readFileSync(path.join(runDir, `pr-body-${i + 1}.md`), "utf8")}`).join("\n\n");
+      // 4. Publish the PR (the engine pushes; agents never hold credentials).
+      await gitLock(() => must("git", ["push", "-q", "-f", "origin", `HEAD:refs/heads/${branch}`], { cwd: wt }));
+      const prBody = `${result.summary ?? ""}\n\n---\n**Mutant** \`${armId}\` (${size}, parent \`${parent.arm_id}\`)${ctx.revival ? `, revival of \`${ctx.revival.root}\`` : ""}\n\n**Hypothesis:** ${hyp.hypothesis}${hyp.implements_issue ? `\n\nPart of #${hyp.implements_issue}` : ""}\n\n_Built and reviewed by the Darwinian engine; merged only if it wins selection._`;
+      const opened = await openPR(repoSlug, { base: baseBranch, head: branch, title: result.title ?? hyp.title, body: prBody });
+      const topPr = { ...opened, branch, base: baseBranch, head: (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim(), title: result.title ?? hyp.title };
+      const prs = [topPr];
+      await journal(sp.id, "progress", armId, `opened ${topPr.url}; automated review starting`);
+      const prBodies = prBody;
 
       // 5. Automated PR review: Codex (charter) + a fresh Claude reviewer, feedback commits, up to N rounds.
       const rounds = cfg.prReviewRounds ?? 3;
@@ -149,7 +142,7 @@ export function makePipeline(d) {
         const blocking = findings.filter((f) => f.blocking);
         lastFindings = blocking;
         const reviewBody = `### Automated review, round ${round}\n\n**Charter audit (Codex):** ${audit?.verdict === "pass" ? "pass" : "changes needed"}${audit?.summary ? `. ${audit.summary}` : ""}\n\n**Code review:** ${review?.verdict ?? "no verdict"}${review?.summary ? `. ${review.summary}` : ""}\n\n${findings.length ? findings.map((f) => `- **${f.id}** ${f.blocking ? "(blocking)" : "(non-blocking)"} ${f.file ? `\`${f.file}${f.line ? ":" + f.line : ""}\` ` : ""}${f.problem}${f.fix ? `\n  Fix: ${f.fix}` : ""}`).join("\n") : "No findings."}`;
-        await gh(["pr", "comment", String(topPr.number), "-R", repoSlug, "--body", reviewBody.slice(0, 60000)]);
+        await commentPR(repoSlug, topPr.number, reviewBody);
         history.push(reviewBody);
         await journal(sp.id, "progress", armId, `review round ${round}: ${blocking.length ? `${blocking.length} blocking finding(s)` : "approved"}`);
         if (!blocking.length) {
@@ -170,7 +163,7 @@ export function makePipeline(d) {
         }
         await gitLock(() => must("git", ["push", "-q", "-f", "origin", `HEAD:refs/heads/${topPr.branch}`], { cwd: wt }));
         const dispText = `### Author's response to round ${round}\n\n${(disp?.dispositions ?? []).map((x) => `- **${x.id}** ${x.action === "apply" ? `applied${x.commit ? ` in ${x.commit}` : ""}` : `rejected: ${x.reason}`}`).join("\n") || "No dispositions recorded."}${disp?.summary ? `\n\n${disp.summary}` : ""}${g.ok ? "" : `\n\nChecks still failing:\n\`\`\`\n${g.failure.slice(0, 1500)}\n\`\`\``}`;
-        await gh(["pr", "comment", String(topPr.number), "-R", repoSlug, "--body", dispText.slice(0, 60000)]);
+        await commentPR(repoSlug, topPr.number, dispText);
         history.push(dispText);
       }
       const finalHead = (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim();
@@ -180,7 +173,7 @@ export function makePipeline(d) {
 
       if (!approved || !g.ok) {
         const why = !g.ok ? `checks failing after review fixes: ${g.failure.slice(0, 400)}` : `automated review still found blocking problems after ${rounds} round(s): ${lastFindings.map((f) => f.problem).join("; ").slice(0, 700)}`;
-        for (const p of prs) await gh(["pr", "close", String(p.number), "-R", repoSlug, "--comment", `Stillborn: ${why}\n\nThe idea is kept in the seed bank and may be revived on newer code.`]);
+        for (const p of prs) await closePR(repoSlug, p.number, `Stillborn: ${why}\n\nThe idea is kept in the seed bank and may be revived on newer code.`).catch((e) => log(`close PR: ${e.message}`));
         await journal(sp.id, "reject", armId, why);
         await stillborn(sp, armId, parent, st, why, { mutation: mutationText, size, diffstat, revivedFrom: ctx.revival?.root });
         await db.run("UPDATE arms SET prs=?, work_item=? WHERE species=? AND arm_id=?", [JSON.stringify(prs), JSON.stringify(hyp), sp.id, armId]);
@@ -188,7 +181,6 @@ export function makePipeline(d) {
       }
 
       // 6. Deploy the approved head to the nursery.
-      for (const p of prs) await gh(["pr", "ready", String(p.number), "-R", repoSlug]);
       const tag = `fossil/${sp.id}/${armId}`;
       await gitLock(async () => {
         await must("git", ["tag", "-f", tag, finalHead], { cwd: wt });
@@ -211,7 +203,7 @@ export function makePipeline(d) {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [sp.id, armId, origin, "nursery", st.generation + 1, parent.arm_id, tag, `${hyp.title}: ${hyp.hypothesis}`.slice(0, 600), now(), mutationText, size, JSON.stringify(diffstat), JSON.stringify(auditInfo), null, now(), ctx.revival?.root ?? null, 1, issueNo, JSON.stringify(prs), JSON.stringify(hyp)],
       );
-      await gh(["pr", "comment", String(topPr.number), "-R", repoSlug, "--body", `Approved by automated review and deployed to the nursery as \`${armId}\`. Simulated people judge it next; it is merged only if it wins selection.`]);
+      await commentPR(repoSlug, topPr.number, `Approved by automated review and deployed to the nursery as \`${armId}\`. Simulated people judge it next; it is merged only if it wins selection.`);
       if (issueNo) await comment(repoSlug, issueNo, `Mutant \`${armId}\` is trying this: ${topPr.url}`).catch(() => {});
       await journal(sp.id, "spawn", armId, `${size} ${ctx.revival ? `revival of ${ctx.revival.root}, ` : ""}mutation of ${parent.arm_id} as ${prs.map((p) => `#${p.number}`).join(" + ")}: ${hyp.title}. ${hyp.hypothesis}`);
       return armId;
@@ -225,7 +217,7 @@ export function makePipeline(d) {
   async function closePRs(sp, arm, reason) {
     if (!arm?.prs) return;
     for (const p of JSON.parse(arm.prs)) {
-      await gh(["pr", "close", String(p.number), "-R", `${cfg.github.org}/${sp.repo}`, "--comment", `Retired by selection: ${reason}\n\nIts idea stays in the seed bank and may be revived later.`]);
+      await closePR(`${cfg.github.org}/${sp.repo}`, p.number, `Retired by selection: ${reason}\n\nIts idea stays in the seed bank and may be revived later.`).catch((e) => log(`close PR: ${e.message}`));
     }
   }
 
@@ -240,7 +232,6 @@ export function makePipeline(d) {
     await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
     const fresh = (await run("git", ["merge-base", "--is-ancestor", "origin/main", winner.git_ref], { cwd: repo })).code === 0;
     if (fresh) {
-      for (const p of prs) await gh(["pr", "edit", String(p.number), "-R", repoSlug, "--base", "main"]);
       await must("git", ["checkout", "-q", "main"], { cwd: repo });
       await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
       const m = await run("git", [...GIT_ID, "merge", "--no-ff", "--no-edit", "-m", `Promote ${winner.arm_id}: ${prs.map((p) => `#${p.number}`).join(", ")}`, winner.git_ref], { cwd: repo });
@@ -271,8 +262,7 @@ export function makePipeline(d) {
       const g = await gate(wt, base, species, { requireMutationFile: false });
       if (!g.ok) return "failed";
       await gitLock(() => must("git", ["push", "-q", "-f", "origin", `${branch}:refs/heads/${branch}`], { cwd: wt }));
-      const r = await gh(["pr", "create", "-R", repoSlug, "--base", "main", "--head", branch, "--title", `${prs.at(-1).title} (rebased onto main)`, "--body", `Finalist: \`${winner.arm_id}\` won selection, but main moved since it was bred. This is the same change rebased onto main. It must confirm itself against the current champion before it is merged.\n\nOriginal: ${prs.map((p) => p.url).join(", ")}`]);
-      const url = r.out.trim().split("\n").pop();
+      const { url } = await openPR(repoSlug, { base: "main", head: branch, title: `${prs.at(-1).title} (rebased onto main)`, body: `Finalist: \`${winner.arm_id}\` won selection, but main moved since it was bred. This is the same change rebased onto main. It must confirm itself against the current champion before it is merged.\n\nOriginal: ${prs.map((p) => p.url).join(", ")}` });
       const headSha = (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim();
       const tag = `fossil/${sp.id}/${finalist}`;
       await gitLock(async () => {
@@ -287,7 +277,7 @@ export function makePipeline(d) {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [sp.id, finalist, origin, "nursery", st.generation + 1, winner.arm_id, tag, winner.hypothesis, now(), winner.mutation, winner.size, JSON.stringify(numstat((await run("git", ["diff", "--numstat", base, headSha], { cwd: wt })).out)), 1, winner.issue, JSON.stringify(fprs), winner.work_item, winner.arm_id, now()],
       );
-      for (const p of prs) await gh(["pr", "close", String(p.number), "-R", repoSlug, "--comment", `Won selection, but main moved since it was bred. Continued as a finalist rebased onto main: ${url}`]);
+      for (const p of prs) await closePR(repoSlug, p.number, `Won selection, but main moved since it was bred. Continued as a finalist rebased onto main: ${url}`).catch((e) => log(`close PR: ${e.message}`));
       return "finalist";
     } finally {
       await gitLock(() => run("git", ["worktree", "remove", "--force", wt], { cwd: repo }));

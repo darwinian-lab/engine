@@ -75,13 +75,13 @@
     ]
   },
   "models": {
-    "mutate": "opus",
-    "repair": "sonnet",
-    "curate": "sonnet",
-    "ideate": "sonnet",
     "hypothesis": "opus",
-    "review": "opus",
-    "address": "opus"
+    "mutate": "sonnet",
+    "repair": "sonnet",
+    "review": "sonnet",
+    "address": "sonnet",
+    "curate": "sonnet",
+    "ideate": "sonnet"
   },
   "selection": {
     "minTrials": 100,

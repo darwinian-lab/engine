@@ -1,0 +1,17 @@
+name: prcheck
+on:
+  # Commit ops/prcheck.json to check the engine token can open, comment on and close PRs in every species repo.
+  push: { branches: [main], paths: ["ops/prcheck.json"] }
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+      DW_GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node evolve/prcheck.mjs
