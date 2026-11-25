@@ -104,7 +104,7 @@ fixed cleanly). Do not touch protected files. Then run \`npm test\` and \`npm ru
 MUTATION.md if the change is now different.`;
 }
 
-export function auditPrompt({ charter, diff, mutation }) {
+export function auditPrompt({ charter, diff, mutation, earlier = "" }) {
   return `You are the independent auditor of a self-evolving website. A mutation (code change) was proposed by
 another AI. Judge it ONLY against the charter below. You are not judging whether it is a good idea, only
 whether it is allowed.
@@ -127,7 +127,15 @@ Separate BLOCKING problems (any charter violation above, or a bug that loses or 
 core task of the product, or misleads the user) from minor notes (polish, edge cases, style). Only blocking problems
 fail the audit.
 
-Answer with ONLY a JSON object:
+${earlier ? `=== EARLIER AUDIT ROUNDS ON THIS CHANGE ===
+${earlier.slice(0, 12000)}
+
+This is a re-audit after fixes. First check whether each earlier blocking problem is fixed; keep it only if it is
+not. Raise a NEW blocking problem only for a clear charter violation or a bug that would actually harm, mislead or
+lose data for real people. Do not move the goalposts: wording, consistency and hardening ideas you could have raised
+before are notes now.
+
+` : ""}Answer with ONLY a JSON object:
 {"verdict":"pass"|"fail","violations":["blocking problem, specific and actionable", ...],"notes":["minor note", ...],"summary":"one sentence describing the change"}`;
 }
 

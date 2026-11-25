@@ -32,9 +32,11 @@ every subagent you started before you finish; never end your turn while one is s
 
 ## Agents
 
-Spawn subagents with the Task tool, passing the role's runbook file path and the run folder. Roles: planner
-(+ companion, spawned by the planner), implementer, reviewer. Each spawn is fresh; only the implementer is resumed,
-and only for review fixes within its phase. If subagents are unavailable, play the roles sequentially.
+You are the orchestrator. You MUST delegate: spawn every role as a subagent with the Task tool, passing the role's
+runbook file path and the run folder. Roles: planner (+ companion, spawned by the planner), implementer, reviewer.
+Never write or edit product code yourself, and never skip the planner, the phases or the per-phase reviews, however
+small the change looks. Each spawn is fresh; only the implementer is resumed, and only for review fixes within its
+phase.
 
 ## Boundaries
 

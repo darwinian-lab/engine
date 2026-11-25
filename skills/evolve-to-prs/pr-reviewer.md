@@ -11,9 +11,9 @@ Do all gates:
    effects, persistence/network effects and user-visible behaviour to their terminal effects.
 2. Check it against the work item's acceptance criteria, `CHARTER.md` (laws), `CLAUDE.md` (traps, contracts) and
    `LESSONS.md` (known mistakes). Any repeat of a lesson is a finding.
-3. Try it: run `npm test`, `npm run typecheck`, `npm run e2e`; for UI changes run `npm run dev` and use the browser
-   tools at phone and laptop widths, including fast repeated clicks, edits right before actions, back/refresh,
-   empty and error states. Label each claim `observed` or `reasoned`.
+3. Try it: run `npm test`, `npm run typecheck`, `npm run e2e`. For any UI change you MUST also run `npm run dev` and
+   use the browser tools at phone and laptop widths, including fast repeated clicks, edits right before actions,
+   back/refresh, empty and error states. Label each claim `observed` or `reasoned`.
 4. Check negative space: what should have changed but didn't (privacy page, copy, mobile layout, other entry points).
 5. For findings the author rejected earlier, accept the rejection when the reason holds; otherwise keep the finding
    and explain why the reason fails.

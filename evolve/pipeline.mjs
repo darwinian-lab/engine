@@ -45,8 +45,9 @@ export function makePipeline(d) {
     return json ? extractJson(r.out) : r;
   }
 
-  const CODE_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(git:*)", "Bash(npm:*)", "Bash(npx:*)", "Bash(node:*)", "Bash(ls:*)", "Bash(cat:*)", "Bash(mkdir:*)", "Bash(rm:*)", "Bash(cp:*)", "Bash(mv:*)"];
-  const READ_TOOLS = ["Read", "Glob", "Grep", "Bash(git log:*)", "Bash(git diff:*)", "Bash(git show:*)", "Bash(ls:*)", "Bash(cat:*)"];
+  // Agents get a full shell (no secrets in their environment); pushing and network fetches stay blocked.
+  const CODE_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "Bash"];
+  const READ_TOOLS = ["Read", "Glob", "Grep", "Bash"];
 
   const commitsOf = async (wt, base, head) => (await run("git", ["log", "--format=%h %s", `${base}..${head}`], { cwd: wt })).out.trim();
 
@@ -179,6 +180,7 @@ export function makePipeline(d) {
         return null;
       }
       await must("git", ["checkout", "-q", branch], { cwd: wt });
+      if (!fs.existsSync(path.join(runDir, "phased-plan.md"))) ghNotice(`${sp.id} ${armId} build`, "the builder skipped the planner (no phased-plan.md in the run folder)");
       await journal(sp.id, "progress", armId, `built (${(await commitsOf(wt, baseSha, "HEAD")).split("\n").length} commits); running checks`);
 
       // 3. Viability gates on the top head (protected files, tests, typecheck, build, end-to-end).
@@ -214,7 +216,7 @@ export function makePipeline(d) {
       for (let round = 1; round <= rounds + 1; round++) {
         const headSha = (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim();
         const diff = (await run("git", ["diff", `${baseSha}...${headSha}`], { cwd: wt })).out;
-        const audit = await codex(auditPrompt({ charter: fs.readFileSync(path.join(wt, "CHARTER.md"), "utf8"), diff, mutation: workItem }), "audit");
+        const audit = await codex(auditPrompt({ charter: fs.readFileSync(path.join(wt, "CHARTER.md"), "utf8"), diff, mutation: workItem, earlier: history.join("\n\n") }), "audit");
         const review = await agent({ label: `${sp.id}/${armId} review r${round}`, cwd: wt, prompt: prReviewPrompt({ workItem, baseSha, headSha, prBodies, history: history.join("\n\n") }), model: cfg.models.review ?? "opus", tools: [...READ_TOOLS, "Bash(npm:*)", "Bash(npx:*)", "Bash(node:*)"], browser: true, minutes: 30, json: true });
         const findings = [
           ...((audit?.verdict === "pass" ? [] : audit?.violations ?? ["auditor unavailable"]).map((v, i) => ({ id: `A${round}.${i + 1}`, blocking: true, severity: "high", problem: v, fix: "", source: "charter audit" }))),

@@ -76,7 +76,7 @@
   },
   "models": {
     "hypothesis": "opus",
-    "mutate": "sonnet",
+    "mutate": "opus",
     "repair": "sonnet",
     "review": "sonnet",
     "address": "sonnet",
@@ -138,5 +138,5 @@
   "repairRounds": 3,
   "auditFixRounds": 3,
   "pipeline": "single",
-  "prReviewRounds": 3
+  "prReviewRounds": 5
 }
