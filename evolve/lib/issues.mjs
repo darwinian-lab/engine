@@ -49,7 +49,7 @@ export function rankIssues(issues) {
 export function backlogText(issues, n = 10) {
   return rankIssues(issues)
     .slice(0, n)
-    .map((i) => `- #${i.number} (${i.source === "owner" ? "OWNER REQUEST" : `${i.source}, ${i.votes} vote${i.votes === 1 ? "" : "s"}`}) ${i.title}: ${i.body.replace(/\s+/g, " ").slice(0, 300)}`)
+    .map((i) => `- ${i.number ? `#${i.number}` : "(not filed yet)"} (${i.source === "owner" ? "OWNER REQUEST" : `${i.source}, ${i.votes} vote${i.votes === 1 ? "" : "s"}`}) ${i.title}: ${i.body.replace(/\s+/g, " ").slice(0, 300)}`)
     .join("\n");
 }
 

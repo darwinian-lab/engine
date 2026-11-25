@@ -421,11 +421,11 @@ async function cycle(sp) {
 
   // The backlog (best effort: needs the token's Issues permission).
   let issues = [];
+  // Owner requests filed by commit (ops/owner-issues.json), created once as issues.
+  const ownerFile = path.join(ENGINE_DIR, "ops", "owner-issues.json");
+  const wanted = fs.existsSync(ownerFile) ? JSON.parse(fs.readFileSync(ownerFile, "utf8")).filter((i) => i.species === sp.id) : [];
   try {
     await ensureLabels(repoSlug);
-    // Owner requests filed by commit (ops/owner-issues.json), created once.
-    const ownerFile = path.join(ENGINE_DIR, "ops", "owner-issues.json");
-    const wanted = fs.existsSync(ownerFile) ? JSON.parse(fs.readFileSync(ownerFile, "utf8")).filter((i) => i.species === sp.id) : [];
     if (wanted.length) {
       const all = JSON.parse((await run("gh", ["issue", "list", "-R", repoSlug, "--state", "all", "--limit", "300", "--json", "title"], { env: { GH_TOKEN: process.env.DW_GH_TOKEN ?? "" } })).out || "[]");
       for (const w of wanted) if (!all.some((i) => i.title === w.title)) await createIssue(repoSlug, { title: w.title, body: w.body });
@@ -435,6 +435,8 @@ async function cycle(sp) {
       [sp.id, JSON.stringify(issues.map(({ body, ...i }) => ({ ...i, body: body.slice(0, 400) }))), now()]);
   } catch (e) {
     log(`[${sp.id}] backlog unavailable: ${e.message}`);
+    // Without GitHub access, owner requests still reach the mutants.
+    issues = wanted.map((w) => ({ number: null, title: w.title, body: w.body, votes: 1, source: "owner", labels: [] }));
   }
 
   const alive = async () => db.all("SELECT * FROM arms WHERE species=? AND status IN ('live','champion','nursery','control')", [sp.id]);
