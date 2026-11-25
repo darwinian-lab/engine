@@ -561,6 +561,9 @@ async function cycle(sp) {
       st.generation += 1;
       await db.run("UPDATE species_state SET generation=?, updated_at=? WHERE species=?", [st.generation, now(), sp.id]);
       await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
+      // The champion serves main (its own change plus everything already on main).
+      await must("npm", ["install", "--no-audit", "--no-fund"], { cwd: repo, timeoutMs: 10 * 60_000 });
+      await deployArm(sp, repo, winner.arm_id).catch((e) => log(`[${sp.id}] redeploying champion from main failed: ${e.message}`));
       const c = dec.combined[dec.promote];
       await journal(sp.id, "promote", dec.promote, `new champion: P(better than ${champion.arm_id})=${dec.pbeat[dec.promote].toFixed(3)} [${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real]; generation ${st.generation}`);
       if (winner.issue) await closeIssue(repoSlug, winner.issue, `Shipped: mutant \`${winner.arm_id}\` implemented this and became the champion.`).catch(() => {});
