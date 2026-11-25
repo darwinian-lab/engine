@@ -1,0 +1,39 @@
+name: growth
+# Acquisition experiments, once a day (dispatched by the router clock): measure what each idea brought, then breed
+# new ideas where it works. See evolve/growth.mjs.
+on:
+  workflow_dispatch:
+    inputs:
+      species: { description: "Only this species (qr, resume, wall)", required: false }
+      per_run: { description: "New ideas per species", required: false }
+concurrency: { group: growth, cancel-in-progress: false }
+permissions: { contents: write }
+jobs:
+  grow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      DW_GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+      DW_LAB_KEY: ${{ secrets.DW_LAB_KEY }}
+      GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: scripts/ci-setup.sh
+      - name: Growth loop
+        run: node evolve/growth.mjs ${{ inputs.species && format('--species {0}', inputs.species) || '' }} ${{ inputs.per_run && format('--per-run {0}', inputs.per_run) || '' }}
+      - if: always()
+        run: scripts/ci-finish.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-transcripts-${{ github.run_id }}
+          path: ${{ env.DW_WORKDIR }}/.tmp/transcripts/
+          if-no-files-found: ignore
+          retention-days: 30

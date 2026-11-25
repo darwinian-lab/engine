@@ -21,6 +21,7 @@ async function gh(args, input) {
 const LABELS = [
   ["from:sim", "c5def5", "Reported by simulated users"],
   ["from:ideation", "d4c5f9", "Proposed by the ideation agent"],
+  ["from:growth", "fbca04", "Acquisition: a page or change meant to bring real visitors"],
 ];
 
 export async function ensureLabels(repo) {
@@ -35,14 +36,14 @@ export async function listIssues(repo) {
     const labels = (i.labels ?? []).map((l) => l.name);
     const thumbs = (i.reactionGroups ?? []).find((g) => g.content === "THUMBS_UP")?.users?.totalCount ?? 0;
     const votes = 1 + thumbs + (i.comments ?? []).filter((c) => /^\+1\b/.test(c.body ?? "")).length;
-    const source = labels.includes("from:sim") ? "sim" : labels.includes("from:ideation") ? "ideation" : "owner";
+    const source = labels.includes("from:sim") ? "sim" : labels.includes("from:ideation") ? "ideation" : labels.includes("from:growth") ? "growth" : "owner";
     return { number: i.number, title: i.title, body: (i.body ?? "").slice(0, 800), labels, votes, source, createdAt: i.createdAt };
   });
 }
 
 /** Owner requests first, then by votes. */
 export function rankIssues(issues) {
-  const w = { owner: 3, sim: 1, ideation: 1 };
+  const w = { owner: 3, growth: 2, sim: 1, ideation: 1 };
   return issues.slice().sort((a, b) => w[b.source] - w[a.source] || b.votes - a.votes || a.number - b.number);
 }
 

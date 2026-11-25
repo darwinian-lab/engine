@@ -377,6 +377,7 @@ function render() {
       <section class="panel"><h2>Where visitors came from</h2><p class="sub">Distinct visitors per day over the last 30 days, by the site that sent them. Your own visits aren't counted.</p><div id="src"></div></section>
       <section class="panel"><h2>Does AI search recommend it?</h2><p class="sub">Once a week the loop asks an AI assistant with web search a real user question and checks whether this site is in its top five.</p><div id="probes"></div></section>
     </div>
+    <section class="panel" style="margin-top:18px"><h2>Growth experiments</h2><p class="sub">Acquisition evolves too. Every idea (a directory listing, a community post, an answer, a landing page) has its own tracked link, so the real visitors it brings are counted. Channels that bring people get more ideas next time. Posts are published by a person, as the maker; mark them posted here so their clock starts.</p><div id="growth"></div></section>
     <div class="grid two">
       <section class="panel"><h2>What simulated people experienced</h2><p class="sub">AI agents with realistic personas use each mutant in a real browser, sometimes across days and devices, through the real site. Latest sessions first; click one for the details.</p><div id="simList"></div></section>
       <section class="panel"><h2>Backlog</h2><p class="sub">Each site's private GitHub issues: your requests first, then problems and wishes from simulated people and ideas from the ideation agent. Mutants may pick one to implement.</p><div id="backlog"></div></section>
@@ -390,6 +391,7 @@ function render() {
   drawProbes();
   drawSims();
   drawBacklog();
+  drawGrowth();
   drawSpecimens();
   drawJournal();
 }
@@ -760,6 +762,39 @@ function drawBacklog() {
   }).join("")}</ul><p class="faint" style="font-size:12.5px;margin:8px 0 0">Updated ${ago(b.updated_at)}.</p>`;
 }
 
+// ---------- growth ----------
+const CH = { landing: "Landing page", directory: "Directory", community: "Community", qa: "Answer", social: "Social", outreach: "Outreach", launch: "Launch" };
+function drawGrowth() {
+  const g = D.growth || [];
+  if (!g.length) { $("#growth").innerHTML = `<p class="empty">No experiments yet. The growth loop proposes new ones every day.</p>`; return; }
+  const per = {};
+  for (const it of g) { const c = (per[it.channel] ||= { live: 0, done: 0, humans: 0, succ: 0, waiting: 0 }); if (it.status === "live") c.live++; if (it.status === "retired") c.done++; if (it.status === "proposed") c.waiting++; c.humans += it.humans || 0; c.succ += it.successes || 0; }
+  const summary = `<table class="tbl" style="width:100%;font-size:13.5px;margin-bottom:14px"><thead><tr><th style="text-align:left">Channel</th><th>Waiting</th><th>Live</th><th>Finished</th><th>Visitors brought</th><th>Succeeded</th></tr></thead><tbody>${Object.entries(per).map(([c, s]) => `<tr><td>${CH[c] || c}</td><td style="text-align:center">${s.waiting}</td><td style="text-align:center">${s.live}</td><td style="text-align:center">${s.done}</td><td style="text-align:center">${s.humans}</td><td style="text-align:center">${s.succ}</td></tr>`).join("")}</tbody></table>`;
+  const queue = g.filter((it) => it.status === "proposed" && it.kind === "external");
+  const item = (it, actions) => `<li data-g="${esc(it.id)}"><div class="q">${esc(it.title || it.target || it.id)}</div>
+    <div style="margin-top:3px"><span class="pill">${CH[it.channel] || it.channel}</span> <span class="faint" style="font-size:12.5px">${it.target_url ? `<a href="${esc(it.target_url)}" target="_blank" rel="noopener">${esc(it.target || it.target_url)}</a>` : esc(it.target || "")}${it.kind === "owned" && it.issue ? `, issue #${it.issue}` : ""}${it.status === "live" || it.status === "retired" ? `, ${it.humans} visitor${it.humans === 1 ? "" : "s"}, ${it.successes} succeeded` : ""}</span></div>
+    ${it.angle ? `<div class="faint" style="font-size:13px;margin-top:4px">${esc(it.angle)}</div>` : ""}
+    ${actions ? `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:13px">Text to post</summary><pre style="white-space:pre-wrap;font-size:13px;background:var(--bg-2,#f6f6f3);padding:10px;border-radius:6px;margin:6px 0">${esc(it.body || "")}</pre>${it.rules ? `<div class="faint" style="font-size:12.5px">Rules checked: ${esc(it.rules)}</div>` : ""}</details>
+    <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-copy>Copy text</button><button type="button" class="btn" data-act="posted">Mark posted</button><button type="button" class="btn" data-act="skip">Skip</button></div>` : ""}</li>`;
+  const live = g.filter((it) => it.status === "live" || it.status === "retired").sort((a, b) => b.humans - a.humans);
+  const building = g.filter((it) => it.status === "proposed" && it.kind === "owned");
+  $("#growth").innerHTML = summary
+    + `<h3 style="font-size:14px;margin:6px 0">Ready to post (${queue.length})</h3>${queue.length ? `<ul class="probes">${queue.map((it) => item(it, true)).join("")}</ul>` : `<p class="empty">Nothing waiting.</p>`}`
+    + (building.length ? `<h3 style="font-size:14px;margin:14px 0 6px">Landing pages being built (${building.length})</h3><ul class="probes">${building.map((it) => item(it, false)).join("")}</ul>` : "")
+    + `<h3 style="font-size:14px;margin:14px 0 6px">Running and finished (${live.length})</h3>${live.length ? `<ul class="probes">${live.slice(0, 30).map((it) => item(it, false)).join("")}</ul>` : `<p class="empty">None yet.</p>`}`;
+  $("#growth").querySelectorAll("li[data-g]").forEach((li) => {
+    const it = g.find((x) => x.id === li.dataset.g);
+    li.querySelector("[data-copy]")?.addEventListener("click", async (e) => { await navigator.clipboard.writeText(it.body || ""); e.target.textContent = "Copied"; });
+    li.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", async () => {
+      let url = null;
+      if (b.dataset.act === "posted") url = prompt("Link to the post (optional):", it.target_url || "") || null;
+      b.disabled = true;
+      await fetch("/_dw/lab/growth", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: it.id, action: b.dataset.act, url }) });
+      load(SP, true);
+    }));
+  });
+}
+
 // ---------- specimens ----------
 function shotsOf(id) { return D.media.filter((m) => m.arm_id === id && m.kind === "shot"); }
 const mediaUrl = (m) => "/_dw/lab/media/" + m.id;
@@ -785,7 +820,7 @@ const KIND = {
   spawn: ["Born", "var(--st-live)"], reject: ["Stillborn", "var(--st-stillborn)"], promote: ["Promoted", "var(--st-champion)"],
   retire: ["Retired", "var(--ink-2)"], death: ["Died", "var(--st-dead)"], stage: ["New stage", "var(--st-control)"],
   probe: ["AI probe", "var(--st-control)"], sims: ["Simulations", "var(--st-nursery)"], graduate: ["Graduated", "var(--st-live)"],
-  revive: ["Revived", "var(--st-champion)"], ideation: ["Ideas", "var(--st-nursery)"], finalist: ["Finalist", "var(--st-champion)"], crossover: ["Crossover", "var(--st-champion)"], progress: ["Building", "var(--st-nursery)"], indexnow: ["Indexing", "var(--ink-3)"], note: ["Note", "var(--ink-2)"], reminder: ["Reminder", "var(--st-champion)"],
+  revive: ["Revived", "var(--st-champion)"], ideation: ["Ideas", "var(--st-nursery)"], finalist: ["Finalist", "var(--st-champion)"], crossover: ["Crossover", "var(--st-champion)"], growth: ["Growth", "var(--st-live)"], progress: ["Building", "var(--st-nursery)"], indexnow: ["Indexing", "var(--ink-3)"], note: ["Note", "var(--ink-2)"], reminder: ["Reminder", "var(--st-champion)"],
 };
 function drawJournal() {
   const kinds = ["all", ...Object.keys(KIND).filter((k) => D.journal.some((j) => j.kind === k))];

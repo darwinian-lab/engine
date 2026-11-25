@@ -61,6 +61,17 @@ export async function lab(req: Request, env: Env): Promise<Response> {
   }
   if (sub === "api") return json(await snapshot(env, url.searchParams.get("species") || env.SPECIES));
   if (sub.startsWith("media/")) return media(req, env, Number(sub.slice(6)));
+  // Growth queue: the owner marks an external item as posted (its window starts) or skips it.
+  if (sub === "growth" && req.method === "POST") {
+    if (req.headers.get("origin") && new URL(req.headers.get("origin")!).host !== url.host) return notFound();
+    const body = (await req.json().catch(() => null)) as { id?: string; action?: string; url?: string } | null;
+    if (!body?.id || !["posted", "skip", "unskip"].includes(body.action ?? "")) return json({ ok: false });
+    const t = Date.now();
+    if (body.action === "posted") await env.DB.prepare("UPDATE growth_items SET status='live', live_at=?, target_url=COALESCE(?, target_url) WHERE id=? AND status='proposed'").bind(t, body.url || null, body.id).run();
+    if (body.action === "skip") await env.DB.prepare("UPDATE growth_items SET status='skipped', retired_at=? WHERE id=? AND status='proposed'").bind(t, body.id).run();
+    if (body.action === "unskip") await env.DB.prepare("UPDATE growth_items SET status='proposed', retired_at=NULL WHERE id=? AND status='skipped'").bind(body.id).run();
+    return json({ ok: true });
+  }
   if (sub === "visit") {
     const arm = url.searchParams.get("arm") ?? "";
     const res = new Response(null, { status: 303, headers: { location: "/" } });
@@ -101,7 +112,7 @@ export async function snapshot(env: Env, sp: string) {
   const since30 = Date.now() - 30 * DAY;
   const q = (sql: string, ...b: unknown[]) => env.DB.prepare(sql).bind(...b).all<any>().then((r) => r.results);
   const safe = <T>(p: Promise<T>, fallback: T) => p.catch(() => fallback); // tables may not exist yet
-  const [configs, state, arms, stats, journal, mediaRows, pbHistory, simRows, backlogRow] = await Promise.all([
+  const [configs, state, arms, stats, journal, mediaRows, pbHistory, simRows, backlogRow, growthRows] = await Promise.all([
     q("SELECT species, json FROM species_config"),
     env.DB.prepare("SELECT * FROM species_state WHERE species = ?").bind(sp).first<any>(),
     q("SELECT * FROM arms WHERE species = ? ORDER BY created_at", sp),
@@ -111,6 +122,7 @@ export async function snapshot(env: Env, sp: string) {
     safe(q("SELECT ts, arm_id, pbest, trials, successes FROM pb_history WHERE species = ? AND ts > ? ORDER BY ts", sp, Date.now() - 60 * DAY), []),
     safe(q("SELECT id, ts, arm_id, persona, device, outcome, stage_hit, done, rating, minutes, report FROM sim_runs WHERE species = ? AND ts > ? ORDER BY ts DESC LIMIT 400", sp, Date.now() - 30 * DAY), []),
     safe(env.DB.prepare("SELECT json, updated_at FROM backlog WHERE species = ?").bind(sp).first<any>(), null),
+    safe(q("SELECT * FROM growth_items WHERE species = ? ORDER BY created_at DESC LIMIT 200", sp), []),
   ]);
   const cfg = parse(configs.find((c: any) => c.species === sp)?.json) ?? {};
   const stageIdx = state?.stage ?? 0;
@@ -179,6 +191,7 @@ export async function snapshot(env: Env, sp: string) {
       };
     }),
     backlog: backlogRow ? { updated_at: backlogRow.updated_at, issues: parse(backlogRow.json) ?? [] } : null,
+    growth: growthRows,
     arms: arms.map((a: any) => ({
       arm_id: a.arm_id,
       status: a.status,

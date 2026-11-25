@@ -129,6 +129,12 @@
     "mobileDevice": "iPhone 15",
     "mcpCommand": "playwright-mcp"
   },
+  "growth": {
+    "perRun": 4,
+    "windowDays": 30,
+    "maxProposed": 12,
+    "model": "sonnet"
+  },
   "crossover": {
     "enabled": true,
     "perCycle": 1,

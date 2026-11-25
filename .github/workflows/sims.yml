@@ -1,9 +1,8 @@
 name: sims
-# Simulated users run on their own every hour, separate from breeding (one job: parallel jobs would race to refresh
+# Simulated users run on their own every hour (dispatched by the router clock), separate from breeding (one job: parallel jobs would race to refresh
 # the shared Codex login).
 # Selection in the evolve cycle uses everything they recorded (sim_runs, last 14 days).
 on:
-  schedule: [{ cron: "20 * * * *" }]
   workflow_dispatch:
     inputs:
       sims: { description: "Sessions per species (overrides settings)", required: false }

@@ -296,23 +296,23 @@ export default {
 
   async scheduled(ev: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(aggregate(env));
-    // The heartbeat of evolution: every EVOLVE_EVERY_H hours (default 6), start one cycle in GitHub Actions.
+    // The heartbeat of evolution (only the router with GH_DISPATCH_TOKEN, i.e. qr, keeps the clock):
+    // a breeding cycle every EVOLVE_EVERY_H hours, simulated users every hour, the growth loop once a day.
     const t = new Date(ev.scheduledTime);
     const every = Number(env.EVOLVE_EVERY_H ?? 6) || 6;
-    if (env.GH_DISPATCH_TOKEN && t.getUTCHours() % every === 0 && t.getUTCMinutes() < 15) {
-      ctx.waitUntil(
-        fetch(`https://api.github.com/repos/${env.DISPATCH_REPO ?? "darwinian-lab/engine"}/actions/workflows/evolve.yml/dispatches`, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
-            accept: "application/vnd.github+json",
-            "user-agent": "darwinian-clock",
-          },
-          body: JSON.stringify({ ref: "main" }),
-        }).then(async (r) => {
-          if (!r.ok) console.log("dispatch failed", r.status, await r.text());
-        }),
-      );
+    const h = t.getUTCHours(), m = t.getUTCMinutes();
+    const dispatch = (workflow: string) =>
+      fetch(`https://api.github.com/repos/${env.DISPATCH_REPO ?? "darwinian-lab/engine"}/actions/workflows/${workflow}/dispatches`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`, accept: "application/vnd.github+json", "user-agent": "darwinian-clock" },
+        body: JSON.stringify({ ref: "main" }),
+      }).then(async (r) => {
+        if (!r.ok) console.log("dispatch failed", workflow, r.status, await r.text());
+      });
+    if (env.GH_DISPATCH_TOKEN) {
+      if (h % every === 0 && m < 15) ctx.waitUntil(dispatch("evolve.yml"));
+      if (m >= 15 && m < 30) ctx.waitUntil(dispatch("sims.yml"));
+      if (h === 7 && m >= 30 && m < 45) ctx.waitUntil(dispatch("growth.yml"));
     }
   },
 };
