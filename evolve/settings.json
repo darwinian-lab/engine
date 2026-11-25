@@ -138,5 +138,5 @@
   "repairRounds": 3,
   "auditFixRounds": 3,
   "pipeline": "single",
-  "prReviewRounds": 5
+  "prReviewRounds": 3
 }

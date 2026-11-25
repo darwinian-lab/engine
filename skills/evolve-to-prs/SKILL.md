@@ -67,11 +67,10 @@ Keep the plan proportionate: a small mutation is usually one or two phases. Do n
 3. Spawn a fresh read-only reviewer with `reviewer.md`, the brief's acceptance criteria, phase section, range,
    checks, config rules, prior reports and carried findings.
 4. On `NEEDS_CHANGES`, resume the same implementer to fix with new commits, then a new reviewer re-reviews.
-5. Non-final phases: one initial review plus at most one fix/re-review cycle; remaining material findings carry
-   forward.
-6. Final phase: up to three review rounds. Anything still open goes in result.json as `open_findings`; the engine's
-   PR review judges it. Do not loop further.
-7. Save the final SHA, checks, verdict and carried findings in run config.
+5. Every phase, the final one included: one initial review plus at most one fix/re-review cycle. Remaining material
+   findings carry forward; after the final phase they go in result.json as `open_findings` for the engine's PR
+   review. Do not loop further.
+6. Save the final SHA, checks, verdict and carried findings in run config.
 
 ### Finish
 

@@ -16,9 +16,9 @@
 - Folder: the run folder named in the invoking prompt. Keep everything.
 
 ## Review
-- Every phase except the final phase gets at most two reviewer rounds.
-- Material findings remaining after round two carry into the next phase.
-- The final phase gets at most three reviewer rounds; anything still open is reported in result.json.
+- Every phase, the final one included, gets at most two reviewer rounds (one review, one fix and re-review).
+- Material findings remaining after round two carry into the next phase; after the final phase they go in
+  result.json as `open_findings`.
 
 ## Conventions
 - Integration branch: the base SHA named in the invoking prompt.
