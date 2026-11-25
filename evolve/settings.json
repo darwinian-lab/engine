@@ -130,5 +130,7 @@
   },
   "backlog": {
     "maxNewPerCycle": 3
-  }
+  },
+  "repairRounds": 3,
+  "auditFixRounds": 3
 }

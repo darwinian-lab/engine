@@ -264,9 +264,11 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings, ctx = {}
       await must("npm", ["install", "--no-audit", "--no-fund"], { cwd: wt, timeoutMs: 10 * 60_000 });
     }
 
+    const repairRounds = cfg.repairRounds ?? 3;
+    const auditFixRounds = cfg.auditFixRounds ?? 3;
     let g = await gate(wt, ref, species);
-    if (!g.ok && g.changes.length > 0) {
-      log(`[${sp.id}] ${armId} failed gates, attempting one repair`);
+    for (let i = 1; !g.ok && g.changes.length > 0 && i <= repairRounds; i++) {
+      log(`[${sp.id}] ${armId} failed gates, repair round ${i}/${repairRounds}`);
       await claude(wt, repairPrompt(g.failure), cfg.models.repair);
       g = await gate(wt, ref, species);
     }
@@ -286,11 +288,16 @@ async function spawnOne(sp, repo, species, brief, st, parent, siblings, ctx = {}
     };
     let audit = await runAudit();
     const auditRounds = [];
-    if (audit && audit.verdict !== "pass" && (audit.violations ?? []).length) {
+    // Review → fix → review again, up to auditFixRounds times, before the mutant is declared stillborn.
+    for (let i = 1; audit && audit.verdict !== "pass" && (audit.violations ?? []).length && i <= auditFixRounds; i++) {
       auditRounds.push(audit.violations);
-      ghNotice(`${sp.id} ${armId} audit round 1`, JSON.stringify(audit.violations));
-      await claude(wt, auditFixPrompt(audit.violations), cfg.models.repair);
+      ghNotice(`${sp.id} ${armId} audit round ${i}`, JSON.stringify(audit.violations));
+      await claude(wt, auditFixPrompt(audit.violations, i, auditRounds.slice(0, -1)), cfg.models.repair);
       g = await gate(wt, ref, species);
+      for (let k = 1; !g.ok && k <= repairRounds; k++) {
+        await claude(wt, repairPrompt(g.failure), cfg.models.repair);
+        g = await gate(wt, ref, species);
+      }
       audit = g.ok ? await runAudit() : { verdict: "fail", violations: ["gates failed after fixing audit findings: " + g.failure.slice(0, 500)] };
     }
     if (!audit || audit.verdict !== "pass") {

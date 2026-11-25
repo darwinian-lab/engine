@@ -89,11 +89,16 @@ ${failure.slice(-6000)}
 \`\`\``;
 }
 
-export function auditFixPrompt(violations) {
-  return `An independent auditor reviewed your mutation in this repository and found these BLOCKING problems:
+export function auditFixPrompt(violations, round = 1, earlier = []) {
+  return `An independent auditor reviewed your mutation in this repository and found these BLOCKING problems
+(review round ${round}):
 
 ${violations.map((v, i) => `${i + 1}. ${v}`).join("\n")}
-
+${earlier.length ? `
+Earlier rounds already flagged the following, and your previous fixes did not fully resolve everything. Make sure
+the root cause is fixed this time (not just the symptom), and add a test that proves it:
+${earlier.flat().map((v) => `- ${v}`).join("\n")}
+` : ""}
 Fix every one of them, keeping the intent of your mutation (or remove the part that causes a problem if it can't be
 fixed cleanly). Do not touch protected files. Then run \`npm test\` and \`npm run typecheck\` until they pass, and update
 MUTATION.md if the change is now different.`;
