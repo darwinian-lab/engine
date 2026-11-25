@@ -5,7 +5,7 @@ Own exactly one phase. Follow `methods/implement-phase.md`, with these overrides
 - Work autonomously; there is no human.
 - Create or check out the orchestrator-selected branch from the recorded base/prior SHA. Stop for working-tree changes outside the run folder.
 - Read material findings carried from earlier phases. Resolve every applicable item before or alongside the assigned phase and record its disposition in the completion note.
-- Commit as you go, any granularity; never commit the run folder. Don't rewrite history for neatness.
+- Commit as you go, any granularity; never commit the run folder. Never amend, rebase, reset or squash: every change is a new commit on top.
 - On reviewer findings, fix them with new commits on top.
 - Run acceptance and relevant repository checks. Fix failures caused by the change; record unavailable or independent failures with evidence.
 - Never push, publish, merge, delete, or force-add run artifacts.

@@ -21,7 +21,7 @@ export function makePipeline(d) {
   const LIMIT_RE = /hit your [\w -]*limit|usage limit|rate.?limit|limit reached|quota|credit balance/i;
 
   /** A Claude Code agent with no secrets in its environment. */
-  async function agent({ cwd, prompt, model, tools, browser = false, web = false, minutes = 30, json = false, label = "agent", resume = null, onSession = null }) {
+  async function agent({ cwd, prompt, model, tools, browser = false, web = false, minutes = 30, json = false, label = "agent", resume = null, onSession = null, allowRewrite = false }) {
     fs.mkdirSync(path.join(cwd, ".dw"), { recursive: true });
     const promptFile = path.join(cwd, ".dw", `prompt-${rid(6)}.md`);
     fs.writeFileSync(promptFile, prompt);
@@ -36,7 +36,8 @@ export function makePipeline(d) {
       allowed.push("mcp__browser");
     }
     if (web) allowed.push(...DOC_DOMAINS.map((dom) => `WebFetch(domain:${dom})`));
-    args.push("--allowedTools", allowed.join(","), "--disallowedTools", "Bash(git push:*),Bash(git remote:*),Bash(curl:*),Bash(wget:*)");
+    const denied = ["Bash(git push:*)", "Bash(git remote:*)", "Bash(curl:*)", "Bash(wget:*)", ...(allowRewrite ? [] : ["Bash(git commit --amend:*)", "Bash(git rebase:*)", "Bash(git reset:*)", "Bash(git filter-branch:*)", "Bash(git cherry-pick:*)"])];
+    args.push("--allowedTools", allowed.join(","), "--disallowedTools", denied.join(","));
     // Each agent gets its own local dev-server port so parallel builders don't collide.
     const r = await claudeStream({ args, cwd, label, onSession, timeoutMs: minutes * 60_000, transcriptDir: path.join(cfg.workdir, ".tmp", "transcripts"), env: { DW_DEV_PORT: String(8800 + Math.floor(Math.random() * 900)) } });
     const text = r.out + r.err;
@@ -345,7 +346,7 @@ export function makePipeline(d) {
       const parentBase = (await must("git", ["merge-base", winner.git_ref, "origin/main"], { cwd: repo })).trim();
       let rb = await run("git", [...GIT_ID, "rebase", "--onto", "origin/main", parentBase, branch], { cwd: wt });
       if (rb.code !== 0) {
-        await agent({ label: `${sp.id}/${finalist} resolve conflicts`, cwd: wt, prompt: `A rebase of this branch onto main stopped with conflicts. Resolve every conflict so that BOTH main's behaviour and this branch's change are preserved, run \`git add\` and \`git -c user.name=darwinian -c user.email=evolve@darwinian.local rebase --continue\` until the rebase completes, then run npm test, npm run typecheck and npm run e2e and fix anything broken with focused commits. Never modify protected files.`, model: cfg.models.repair ?? "sonnet", tools: CODE_TOOLS, minutes: 40 });
+        await agent({ label: `${sp.id}/${finalist} resolve conflicts`, cwd: wt, prompt: `A rebase of this branch onto main stopped with conflicts. Resolve every conflict so that BOTH main's behaviour and this branch's change are preserved, run \`git add\` and \`git -c user.name=darwinian -c user.email=evolve@darwinian.local rebase --continue\` until the rebase completes, then run npm test, npm run typecheck and npm run e2e and fix anything broken with focused commits. Never modify protected files.`, model: cfg.models.repair ?? "sonnet", tools: CODE_TOOLS, minutes: 40, allowRewrite: true });
         if ((await run("git", ["status"], { cwd: wt })).out.includes("rebase in progress")) {
           await run("git", ["rebase", "--abort"], { cwd: wt });
           return "failed";

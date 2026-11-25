@@ -40,6 +40,7 @@ and only for review fixes within its phase. If subagents are unavailable, play t
 
 - Run phases and reviews sequentially.
 - Never push, create PRs, merge, delete branches, stash, or discard work.
+- Never rewrite commits: no `git commit --amend`, `git rebase`, `git reset`, squash or fixup. Every change, fixes included, is a new commit on top.
 - The orchestrator reads only the brief, phased plan, run config, git status, completion notes and review verdicts.
   Anything that needs the diff goes to a subagent.
 - Never modify protected files listed in `species.json` (`protected`).
