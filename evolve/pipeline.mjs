@@ -340,8 +340,10 @@ export function makePipeline(d) {
       await photograph(sp, armId, origin);
       const issueNo = hyp.implements_issue ?? parseImplements(workItem);
       await db.run(
+        // Upsert: a resumed mutant may already have a row from an earlier, interrupted attempt.
         `INSERT INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at, mutation, size, diffstat, audit, personas, shot_at, revived_from, revivable, issue, prs, work_item, crossed_from)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT (species, arm_id) DO UPDATE SET origin=excluded.origin, status=excluded.status, generation=excluded.generation, parent=excluded.parent, git_ref=excluded.git_ref, hypothesis=excluded.hypothesis, mutation=excluded.mutation, size=excluded.size, diffstat=excluded.diffstat, audit=excluded.audit, personas=excluded.personas, shot_at=excluded.shot_at, revived_from=excluded.revived_from, revivable=excluded.revivable, issue=excluded.issue, prs=excluded.prs, work_item=excluded.work_item, crossed_from=excluded.crossed_from, retired_at=NULL, cause=NULL`,
         [sp.id, armId, origin, "nursery", st.generation + 1, parent.arm_id, tag, `${hyp.title}: ${hyp.hypothesis}`.slice(0, 600), now(), mutationText, size, JSON.stringify(diffstat), JSON.stringify(auditInfo), null, now(), ctx.revival?.root ?? null, 1, issueNo, JSON.stringify(prs), JSON.stringify(hyp), cross ? `${cross.a.arm_id},${cross.b.arm_id}` : null],
       );
       await commentPR(repoSlug, topPr.number, `Approved by automated review and deployed to the nursery as \`${armId}\`. Simulated people judge it next; it is merged only if it wins selection.`);
