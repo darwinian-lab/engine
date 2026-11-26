@@ -29,7 +29,7 @@ jobs:
           key: wip-${{ github.run_id }}
           restore-keys: wip-
       - name: Breed through the PR pipeline
-        run: node evolve/run.mjs --no-sims --species "$(jq -r .species ops/pipetest.json)" --spawn "$(jq -r .spawn ops/pipetest.json)" --pipeline prs
+        run: DW_BUILDER="$(jq -r '.builder // ""' ops/pipetest.json)" node evolve/run.mjs --no-sims --species "$(jq -r .species ops/pipetest.json)" --spawn "$(jq -r .spawn ops/pipetest.json)" --pipeline prs
       - if: always()
         run: scripts/ci-finish.sh
       - name: Save interrupted mutants

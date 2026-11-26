@@ -288,7 +288,7 @@ ${workItem}`);
         }
         fs.writeFileSync(resultFile, JSON.stringify({ branch, title: hyp.title, summary: failed ?? `Combines ${cross.a.arm_id} and ${cross.b.arm_id}, which each beat the champion on their own.\n\n- ${cross.a.hypothesis}\n- ${cross.b.hypothesis}`, head: failed ? null : "merged" }));
         await checkpoint("checks");
-      } else if (!(resume && fs.existsSync(resultFile) && wip.state.stage !== "build") && (wip.state.builder ??= Math.random() < (cfg.builders?.codexShare ?? 0) ? "codex" : "claude") === "codex") {
+      } else if (!(resume && fs.existsSync(resultFile) && wip.state.stage !== "build") && (wip.state.builder ??= process.env.DW_BUILDER || (Math.random() < (cfg.builders?.codexShare ?? 0) ? "codex" : "claude")) === "codex") {
         // Codex builds part of the mutants on its own quota; gates and review below are the same for both.
         await checkpoint(null, { builder: "codex" });
         await codexBuild({ sp, armId, wt, branch, workItem, title: hyp.title, resultFile, size, resumed: Boolean(resume) });
