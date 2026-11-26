@@ -14,8 +14,22 @@ export function agentEnv(extra = {}) {
 }
 
 /** Writes a line to the CI log, prefixed so interleaved agents stay readable. */
+// Values that must never appear in logs (the engine repo and its Actions logs are public). Derived keys are not
+// GitHub secrets, so Actions doesn't mask them by itself: each is registered with ::add-mask:: and redacted here.
+const SECRETS = new Set();
+export function addSecret(v) {
+  if (!v || v.length < 8 || SECRETS.has(v)) return;
+  SECRETS.add(v);
+  if (process.env.GITHUB_ACTIONS) process.stdout.write(`::add-mask::${v}\n`);
+}
+export function redact(text) {
+  let t = String(text ?? "");
+  for (const v of SECRETS) t = t.split(v).join("***");
+  return t;
+}
+
 export function echo(prefix, line) {
-  for (const l of String(line).split("\n")) if (l.trim()) process.stdout.write(`${prefix} ${l}\n`);
+  for (const l of redact(line).split("\n")) if (l.trim()) process.stdout.write(`${prefix} ${l}\n`);
 }
 
 export function run(cmd, args, { cwd, timeoutMs = 10 * 60_000, input, env, agent = false, onLine, echoPrefix } = {}) {
@@ -64,7 +78,7 @@ export function run(cmd, args, { cwd, timeoutMs = 10 * 60_000, input, env, agent
 /** Like run, but throws on non-zero exit. */
 export async function must(cmd, args, opts) {
   const r = await run(cmd, args, opts);
-  if (r.code !== 0) throw new Error(`${cmd} ${args.join(" ")} failed (${r.code}):\n${(r.err || r.out).slice(-3000)}`);
+  if (r.code !== 0) throw new Error(redact(`${cmd} ${args.join(" ")} failed (${r.code}):\n${(r.err || r.out).slice(-3000)}`));
   return r.out;
 }
 

@@ -25,6 +25,11 @@
 - Branch: the one named in the invoking prompt. One branch per mutation.
 - Verification commands: `npm test`, `npm run typecheck`, `npm run build`, `npm run e2e`.
 
+## Shared machine
+- Other agents and the engine run on this machine at the same time. Never run `pkill`, `killall` or `kill` on
+  processes you didn't start (never `pkill -f wrangler`: that kills the engine's deploys). Stop your own dev server
+  by the PID you started it with, or by its port.
+
 ## Capabilities
 - Local site: `npm run dev` serves the site at http://127.0.0.1:$DW_DEV_PORT (8787 if unset) with a local database.
 - Browser: the `browser` MCP tools (Playwright) can open the local site. Use them to see and click through every

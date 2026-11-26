@@ -199,7 +199,13 @@ async function fetchText(origin, p) {
 
 async function deployArm(sp, wt, armId) {
   const name = `sp-${sp.id}-${armId}`;
-  await must("npx", ["wrangler", "deploy", "--name", name, "--var", `ROUTER_KEY:${cfg.routerKey}`], { cwd: wt, env: cfEnv, timeoutMs: 5 * 60_000 });
+  // One retry: a deploy can fail transiently (or because a parallel agent stopped a wrangler process).
+  const dep = () => must("npx", ["wrangler", "deploy", "--name", name, "--var", `ROUTER_KEY:${cfg.routerKey}`], { cwd: wt, env: cfEnv, timeoutMs: 5 * 60_000 });
+  await dep().catch(async (e) => {
+    log(`deploy ${name} failed once, retrying: ${e.message.split("\n")[0]}`);
+    await new Promise((r) => setTimeout(r, 10_000));
+    return dep();
+  });
   return { name, origin: `https://${name}.${cfg.cloudflare.workersSubdomain}.workers.dev` };
 }
 

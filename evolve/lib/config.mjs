@@ -4,7 +4,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readJson } from "./util.mjs";
+import { readJson, addSecret } from "./util.mjs";
 
 export const ENGINE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 export const STATE_PATH = path.join(ENGINE_DIR, "evolve/state.json");
@@ -36,6 +36,10 @@ export function loadConfig(argv = process.argv.slice(2)) {
     routerKey: env.DW_ROUTER_KEY || (env.DW_LAB_KEY ? crypto.createHmac("sha256", env.DW_LAB_KEY).update("darwinian-router").digest("hex") : ""),
     labKey: env.DW_LAB_KEY ?? "",
   };
+  // Never let derived keys reach the (public) logs: the router key, the simulated-user token and the owner cookie.
+  addSecret(cfg.routerKey);
+  if (cfg.routerKey) addSecret(crypto.createHmac("sha256", cfg.routerKey).update("dw-sim").digest("hex"));
+  if (cfg.labKey) addSecret(crypto.createHmac("sha256", cfg.labKey).update("dw-lab-owner").digest("hex"));
   // Persist only the non-secret, bootstrap-discovered values.
   cfg.save = () =>
     fs.writeFileSync(STATE_PATH, JSON.stringify({ workersSubdomain: cfg.cloudflare.workersSubdomain, d1Engine: cfg.cloudflare.d1Engine }, null, 2) + "\n");
