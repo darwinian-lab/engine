@@ -1,0 +1,74 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CalmCV design pass</title><style>:root{--desk:#e6ebf0;--sheet:#fff;--ink:#16202a;--ink-2:#4a5866;--ink-3:#7a8794;--rule:#cdd5dd;--hair:#e9edf1;--teal:#0e6b6b;--teal-2:#0a5555;--wash:#dceaea;--err:#a3271b;--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--serif:Georgia,"Times New Roman",serif;--r:8px;--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;--t-xs:12px;--t-sm:14px;--t-md:16px;--t-lg:19px;--t-xl:24px;--t-2xl:40px;--acc:#0e6b6b}
+*{box-sizing:border-box}body{margin:0;background:var(--desk);color:var(--ink);font:400 var(--t-md)/1.55 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:clip}
+button{font:inherit;color:inherit}:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 var(--s5)}
+.top{display:flex;align-items:center;gap:var(--s5);height:68px}.mark{font:600 22px var(--serif);color:var(--ink);text-decoration:none}.top nav{margin-left:auto;display:flex;gap:var(--s5)}.top nav a{color:var(--ink-2);text-decoration:none;font-weight:500;font-size:var(--t-sm)}
+h1{font:500 clamp(30px,3.4vw,var(--t-2xl))/1.1 var(--serif);margin:var(--s2) 0 var(--s3);letter-spacing:-.015em;text-wrap:balance}
+.intro p{color:var(--ink-2);margin:0 0 var(--s5)}
+.studio{display:grid;grid-template-columns:400px minmax(0,1fr);gap:var(--s7);align-items:start;padding-bottom:var(--s7)}@media(max-width:980px){.studio{grid-template-columns:minmax(0,1fr);gap:var(--s6)}}
+.panel{background:var(--sheet);border-radius:14px;padding:var(--s2) var(--s5) var(--s4)}
+.panel-head{display:flex;justify-content:space-between;align-items:center;padding:var(--s3) 0 var(--s2);font-size:var(--t-sm);color:var(--ink-3)}
+.saved{display:inline-flex;align-items:center;gap:var(--s2)}.saved i{width:8px;height:8px;border-radius:50%;background:#2f8f5b}
+.link{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:var(--t-sm);text-decoration:underline;text-underline-offset:3px;min-height:44px;padding:0}.link:hover{color:var(--err)}
+.sec{border-top:1px solid var(--hair)}.sec:first-of-type{border-top:0}
+.sec summary{display:flex;align-items:center;gap:var(--s2);cursor:pointer;list-style:none;padding:var(--s4) 0;min-height:56px;font-weight:650;font-size:var(--t-md)}.sec summary::-webkit-details-marker{display:none}
+.sec summary:hover{color:var(--teal)}
+.sec summary em{font-style:normal;font-weight:600;font-size:var(--t-xs);color:var(--teal);background:var(--wash);border-radius:999px;padding:1px var(--s2)}
+.sec summary:after{content:"";margin-left:auto;width:8px;height:8px;border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);transform:rotate(45deg)}.sec[open] summary:after{transform:rotate(225deg)}
+.sec-b{padding:0 0 var(--s4)}
+label{display:block;font-weight:600;font-size:var(--t-sm);color:var(--ink-2);margin:var(--s3) 0 var(--s1)}
+input,textarea{width:100%;font:inherit;font-size:var(--t-md);padding:10px var(--s3);border:1.5px solid var(--rule);border-radius:var(--r);background:#fff;color:var(--ink)}input:hover,textarea:hover{border-color:var(--ink-3)}input:focus,textarea:focus{border-color:var(--teal);outline:none;box-shadow:0 0 0 3px var(--wash)}
+input[aria-invalid=true]{border-color:var(--err)}.err{color:var(--err);font-size:var(--t-sm);margin:var(--s1) 0 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 var(--s3)}@media(max-width:480px){.grid2{grid-template-columns:1fr}}
+.item{border:1.5px solid var(--hair);border-radius:var(--r);padding:0 var(--s3) var(--s3);margin-bottom:var(--s3)}
+.ihead{display:flex;align-items:center;gap:var(--s1);padding:var(--s2) 0 0}.ihead b{font-size:var(--t-sm);margin-right:auto;color:var(--ink-2)}
+.ib{width:44px;height:44px;display:grid;place-items:center;border:0;background:none;border-radius:var(--r);color:var(--ink-3);cursor:pointer}.ib:hover{background:var(--desk);color:var(--ink)}.ib.del:hover{color:var(--err);background:#f8e7e5}.ib svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.add{display:flex;align-items:center;gap:var(--s2);width:100%;min-height:44px;justify-content:center;border:1.5px dashed var(--rule);background:none;border-radius:var(--r);color:var(--ink-2);font-weight:600;font-size:var(--t-sm);cursor:pointer}.add:hover{border-color:var(--teal);color:var(--teal);background:#f3f8f8}
+.empty{text-align:center;padding:var(--s5) var(--s4);background:var(--desk);border-radius:var(--r);margin-bottom:var(--s3)}.empty p{margin:0 0 var(--s1);color:var(--ink-2);font-size:var(--t-sm)}.empty b{display:block;font-size:var(--t-md)}
+.desk{position:sticky;top:var(--s4)}@media(max-width:980px){.desk{position:static}}
+.pick-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:var(--s2)}.pick-h b{font-size:var(--t-sm);color:var(--ink-2)}.pick-h span{font-size:var(--t-xs);color:var(--ink-3)}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s3)}@media(max-width:480px){.cards{gap:var(--s2)}}
+.card{all:unset;box-sizing:border-box;cursor:pointer;background:var(--sheet);border-radius:var(--r);padding:var(--s2);box-shadow:inset 0 0 0 1.5px var(--rule);display:block}.card:hover{box-shadow:inset 0 0 0 1.5px var(--ink-3)}.card:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.card[aria-pressed=true]{box-shadow:inset 0 0 0 2.5px var(--teal)}
+.thumb{aspect-ratio:1/1.2;background:#fff;border:1px solid var(--hair);overflow:hidden;padding:8% 9%;font-size:4.6px;line-height:1.4;color:#1b1f24;container-type:inline-size}
+.thumb .n{font-size:1.9em;line-height:1.1;margin-bottom:2px}.thumb .h{font-weight:700;margin-top:5px;padding-bottom:1px;border-bottom:1px solid #1b1f24}.thumb .l{height:2px;background:#c3cad1;margin:2.5px 0}.thumb .l.s{width:70%}
+.card .nm{display:flex;justify-content:space-between;align-items:center;padding:var(--s2) var(--s1) var(--s1);font-weight:650;font-size:var(--t-sm)}.card .nm svg{width:16px;height:16px;stroke:var(--teal);fill:none;stroke-width:2.5;visibility:hidden}.card[aria-pressed=true] .nm svg{visibility:visible}
+.sw{display:flex;align-items:center;gap:var(--s1);margin:var(--s3) 0 var(--s4);font-size:var(--t-sm);color:var(--ink-2)}.sw>span{margin-right:var(--s2)}
+.dot{width:44px;height:44px;display:grid;place-items:center;border:0;background:none;cursor:pointer;border-radius:50%}.dot i{width:24px;height:24px;border-radius:50%;background:var(--c);display:block}.dot:hover i{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--c)}.dot[aria-pressed=true] i{box-shadow:0 0 0 3px #fff,0 0 0 5px var(--c)}
+.bar{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3)}.btn{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 var(--s5);border-radius:999px;border:0;background:var(--teal);color:#fff;font:650 var(--t-sm) var(--sans);cursor:pointer;margin-left:auto}.btn:hover{background:var(--teal-2)}
+.paper{background:#fff;max-width:760px;margin:0 auto;aspect-ratio:1/1.4142;box-shadow:0 1px 2px rgba(22,32,42,.08),0 30px 60px -30px rgba(22,32,42,.35);padding:7% 8%;font:400 11.2px/1.5 var(--serif);color:#1b1f24;overflow:hidden}
+.paper p{margin:2px 0}.paper ul{margin:4px 0 0;padding-left:14px}.paper li{margin:2px 0}
+.r-name{font-size:2.5em;line-height:1.05;font-weight:600;letter-spacing:-.01em}.r-title{font-size:1.15em;margin-top:4px;color:var(--acc)}.r-contact{font:.88em var(--sans);margin-top:8px;color:#56606a}
+.r-sec{margin-top:1.6em}.r-h{font-weight:700;font-variant:small-caps;letter-spacing:.05em;font-size:1.12em;color:var(--acc);border-bottom:1px solid var(--acc);padding-bottom:.25em;margin-bottom:.7em}
+.r-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:baseline}.r-row b{font-weight:650}.r-row span{font:.9em var(--sans);font-variant-numeric:tabular-nums;color:#56606a;white-space:nowrap}.r-sub{color:#56606a;font-style:italic}.r-item{margin-bottom:.9em}
+.note{font-size:var(--t-sm);color:var(--ink-3);text-align:center;margin-top:var(--s4)}
+</style></head><body>
+<header class="wrap top"><a class="mark" href="#">CalmCV</a><nav><a href="#">Examples</a><a href="#">Pricing</a><a href="#">Why it's free</a></nav></header>
+<div class="wrap studio"><div>
+<div class="intro"><h1>Write your resume calmly. Download it free.</h1><p>No account, no trial that turns into a monthly charge. Fill in the sections, pick a template, save the PDF.</p></div>
+<div class="panel"><div class="panel-head"><span class="saved" data-note="Autosave indicator + calmer section hierarchy"><i></i>Saved just now, in this browser</span><button class="link">Start over</button></div>
+<details class="sec"><summary>Basics</summary></details>
+<details class="sec" open><summary>Experience <em>2</em></summary><div class="sec-b">
+<div class="item"><div class="ihead"><b>Product Designer, Lumen Health</b><button class="ib" aria-label="Move up"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><button class="ib" aria-label="Move down"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><button class="ib del" aria-label="Remove"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></div>
+<div class="grid2"><div><label>Role</label><input value="Product Designer"></div><div><label>Company</label><input value="Lumen Health"></div><div><label>Start</label><input value="Mar 2021"></div><div><label>End</label><input value="Present"></div></div>
+<label>What you did</label><textarea rows="3">Led redesign of the booking flow; cut drop-off by 18%.</textarea></div>
+<div class="item"><div class="ihead"><b>Designer, Northwind Studio</b><button class="ib" aria-label="Move up"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><button class="ib" aria-label="Move down"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><button class="ib del" aria-label="Remove"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></div>
+<label>Start</label><input aria-invalid="true" value="2018-ish"><p class="err">Use a month and year, like Jun 2018.</p></div>
+<button class="add">+ Add experience</button></div></details>
+<details class="sec" open><summary>Projects</summary><div class="sec-b"><div class="empty"><b>No projects yet</b><p>Optional. Add one if it shows skills your jobs don't.</p></div><button class="add">+ Add project</button></div></details>
+<details class="sec"><summary>Education <em>1</em></summary></details><details class="sec"><summary>Skills <em>6</em></summary></details>
+</div></div>
+<div class="desk"><div class="pick-h"><b>Template</b><span>Previews use your own content</span></div>
+<div class="cards" role="group" aria-label="Template" data-note="Visual template cards and accent swatches">
+<button class="card" aria-pressed="true"><div class="thumb" style="font-family:Georgia,serif" aria-hidden="true"><div class="n">Maya Okafor</div>Product Designer<div class="h" style="color:#0e6b6b;border-color:#0e6b6b">EXPERIENCE</div><div class="l"></div><div class="l s"></div><div class="h" style="color:#0e6b6b;border-color:#0e6b6b">EDUCATION</div><div class="l"></div></div><div class="nm">Classic<svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></div></button>
+<button class="card" aria-pressed="false"><div class="thumb" style="font-family:system-ui,sans-serif" aria-hidden="true"><div class="n" style="font-weight:800">Maya Okafor</div><span style="color:#0e6b6b">Product Designer</span><div class="h" style="color:#0e6b6b;border-bottom:2px solid #dceaea">Experience</div><div class="l"></div><div class="l s"></div><div class="h" style="color:#0e6b6b;border-bottom:2px solid #dceaea">Education</div><div class="l"></div></div><div class="nm">Modern<svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></div></button>
+<button class="card" aria-pressed="false"><div class="thumb" style="font-family:Georgia,serif;text-align:center" aria-hidden="true"><div class="n" style="font-weight:400;font-size:2.1em">Maya Okafor</div>Product Designer<div class="h" style="font-family:system-ui;color:#56606a;border:0;text-align:left">EXPERIENCE</div><div class="l"></div><div class="l s"></div><div class="h" style="font-family:system-ui;color:#56606a;border:0;text-align:left">EDUCATION</div><div class="l"></div></div><div class="nm">Minimal<svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></div></button></div>
+<div class="sw" role="group" aria-label="Accent colour"><span>Accent</span><button class="dot" style="--c:#0e6b6b" aria-pressed="true" aria-label="Teal"><i></i></button><button class="dot" style="--c:#16202a" aria-pressed="false" aria-label="Ink"><i></i></button><button class="dot" style="--c:#2f4b8a" aria-pressed="false" aria-label="Indigo"><i></i></button><button class="dot" style="--c:#7a3b5e" aria-pressed="false" aria-label="Plum"><i></i></button><button class="dot" style="--c:#a3471f" aria-pressed="false" aria-label="Rust"><i></i></button></div>
+<div class="bar"><button class="btn">Download PDF</button></div>
+<div class="paper" data-note="Typeset preview: consistent rhythm, tabular dates"><div class="r-name">Maya Okafor</div><div class="r-title">Product Designer</div><div class="r-contact">maya@example.com · +44 7700 900123 · Bristol, UK</div>
+<div class="r-sec"><div class="r-h">Summary</div><p>Designer with seven years shaping calm, accessible health products. Comfortable from research to shipped detail.</p></div>
+<div class="r-sec"><div class="r-h">Experience</div>
+<div class="r-item"><div class="r-row"><b>Product Designer, Lumen Health</b><span>Mar 2021 – Present</span></div><ul><li>Led redesign of the booking flow; cut drop-off by 18%.</li><li>Built a shared component library used by five teams.</li></ul></div>
+<div class="r-item"><div class="r-row"><b>Designer, Northwind Studio</b><span>Jun 2018 – Feb 2021</span></div><ul><li>Delivered identity and web work for 20+ clients.</li></ul></div></div>
+<div class="r-sec"><div class="r-h">Education</div><div class="r-row"><b>BA Graphic Design, UWE Bristol</b><span>2014 – 2017</span></div></div></div>
+<p class="note">Free, no account, no watermark.</p></div></div></body></html>
