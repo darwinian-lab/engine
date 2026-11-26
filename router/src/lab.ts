@@ -108,6 +108,9 @@ async function media(req: Request, env: Env, id: number): Promise<Response> {
   return new Response(bytes, { headers });
 }
 
+// Until the evolve loop has written each species' domain into species_config.
+const KNOWN_DOMAINS: Record<string, string> = { qr: "qrsthatlast.com", resume: "calmcv.com", wall: "kudospage.com" };
+
 export async function snapshot(env: Env, sp: string) {
   const since30 = Date.now() - 30 * DAY;
   const q = (sql: string, ...b: unknown[]) => env.DB.prepare(sql).bind(...b).all<any>().then((r) => r.results);
@@ -175,7 +178,7 @@ export async function snapshot(env: Env, sp: string) {
     repo: `darwinian-lab/species-${sp}`,
     species: configs.map((c: any) => {
       const j = parse(c.json) ?? {};
-      return { id: c.species, name: j.brand?.name ?? c.species, domain: j.domain ?? null };
+      return { id: c.species, name: j.brand?.name ?? c.species, domain: j.domain ?? KNOWN_DOMAINS[c.species] ?? null };
     }),
     state: {
       generation: state?.generation ?? 0,

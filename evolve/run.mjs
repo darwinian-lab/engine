@@ -430,7 +430,7 @@ async function cycle(sp) {
 
   const species = JSON.parse(fs.readFileSync(path.join(repo, "species.json"), "utf8"));
   const brief = fs.existsSync(path.join(repo, "BRIEF.md")) ? fs.readFileSync(path.join(repo, "BRIEF.md"), "utf8") : species.brand.tagline;
-  await db.run("INSERT INTO species_config (species, json, updated_at) VALUES (?,?,?) ON CONFLICT(species) DO UPDATE SET json=excluded.json, updated_at=excluded.updated_at", [sp.id, JSON.stringify(species), now()]);
+  await db.run("INSERT INTO species_config (species, json, updated_at) VALUES (?,?,?) ON CONFLICT(species) DO UPDATE SET json=excluded.json, updated_at=excluded.updated_at", [sp.id, JSON.stringify({ ...species, domain: sp.domain }), now()]);
   await backfill(sp, repo).catch((e) => log(`[${sp.id}] backfill failed: ${e.message}`));
   let st = await db.first("SELECT * FROM species_state WHERE species=?", [sp.id]);
   if (!st) {
