@@ -91,6 +91,10 @@ for (const sp of settings.species) {
         : (await paddle("POST", "/products", { name: o.name, tax_category: "saas", description: o.describe ?? o.name, custom_data: { dw_species: sp.id, dw_sku: o.sku } })).data;
       console.log(`  created product ${o.name}`);
     }
+    if (!DRY && product.id !== "(dry)" && (product.name !== o.name || product.description !== (o.describe ?? o.name))) {
+      await paddle("PATCH", `/products/${product.id}`, { name: o.name, description: o.describe ?? o.name });
+      console.log(`  updated product ${o.name}`);
+    }
     const match = (product.prices ?? []).find(
       (pr) => pr.status === "active" && pr.unit_price?.amount === amount && pr.unit_price?.currency_code === currency && (pr.billing_cycle?.interval ?? null) === (o.interval ?? null),
     );
@@ -112,6 +116,18 @@ for (const sp of settings.species) {
       console.log(`  created price ${o.sku}: ${o.price} ${currency}${o.interval ? " per " + o.interval : " once"}`);
     }
     prices[o.sku] = price.id;
+    // Keep the catalog honest: archive this offer's other prices (e.g. an old amount).
+    for (const pr of product.prices ?? []) {
+      if (pr.status === "active" && pr.id !== price.id && !DRY) {
+        await paddle("PATCH", `/prices/${pr.id}`, { status: "archived" });
+        console.log(`  archived old price ${pr.id} (${pr.unit_price?.amount} ${pr.unit_price?.currency_code})`);
+      }
+    }
+  }
+  // Offers removed from species.json: archive their products.
+  for (const p of products.filter((p) => p.custom_data?.dw_species === sp.id && !offers.some((o) => o.sku === p.custom_data?.dw_sku))) {
+    if (!DRY) await paddle("PATCH", `/products/${p.id}`, { status: "archived" });
+    console.log(`  archived product ${p.name} (no longer offered)`);
   }
   const url = `https://${sp.domain}/_dw/pay/webhook`;
   let dest = destinations.find((d) => d.destination === url && d.active);

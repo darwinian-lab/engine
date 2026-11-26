@@ -787,6 +787,37 @@ async function ideate(sp, species, brief, repoSlug, issues, champion) {
   await journal(sp.id, "ideation", null, ideas.length ? `proposed: ${ideas.map((i) => i.title).join(" | ")}` : "no new ideas");
 }
 
+/**
+ * Hotfix lane (--redeploy-champion): ship what is on a species' main right now as the current champion, without
+ * waiting for the next merge. For owner/engine changes committed straight to main (e.g. what a payment provider's
+ * review needs). Same gates as a mutant (tests, typecheck, build, e2e) and additive migrations only; on any
+ * failure nothing is deployed.
+ */
+async function redeployChampion(sp) {
+  const repo = path.join(cfg.workdir, sp.repo);
+  const champion = await db.first("SELECT * FROM arms WHERE species=? AND status='champion'", [sp.id]);
+  if (!champion) return journal(sp.id, "note", null, "hotfix: no champion to redeploy");
+  await must("git", ["fetch", "-q", "origin"], { cwd: repo });
+  await must("git", ["checkout", "-q", "main"], { cwd: repo });
+  await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
+  await must("npm", ["install", "--no-audit", "--no-fund"], { cwd: repo, timeoutMs: 10 * 60_000 });
+  const sha = (await run("git", ["rev-parse", "--short", "HEAD"], { cwd: repo })).out.trim();
+  const pkg = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8"));
+  for (const script of ["test", "typecheck", "build", "e2e"]) {
+    if (!pkg.scripts?.[script]) continue;
+    const r = await run("npm", ["run", "--silent", script], { cwd: repo, timeoutMs: (script === "e2e" ? 8 : 5) * 60_000 });
+    if (r.code !== 0) return journal(sp.id, "reject", champion.arm_id, `hotfix ${sha} not deployed: npm run ${script} failed: ${(r.out + r.err).slice(-1500)}`);
+  }
+  for (const f of fs.readdirSync(path.join(repo, "migrations"))) {
+    if (/\b(DROP|DELETE|RENAME|UPDATE|REPLACE|TRUNCATE)\b/i.test(fs.readFileSync(path.join(repo, "migrations", f), "utf8").replace(/--.*$/gm, "")))
+      return journal(sp.id, "reject", champion.arm_id, `hotfix ${sha} not deployed: migration ${f} is not additive`);
+  }
+  if (DRY) return log(`[${sp.id}] dry-run: hotfix ${sha} passed the gates; not deploying`);
+  await must("npx", ["wrangler", "d1", "migrations", "apply", `sp-${sp.id}`, "--remote"], { cwd: repo, env: cfEnv, timeoutMs: 5 * 60_000 });
+  await deployArm(sp, repo, champion.arm_id);
+  await journal(sp.id, "note", champion.arm_id, `hotfix: champion ${champion.arm_id} redeployed from main ${sha}`);
+}
+
 const pipe = makePipeline({ cfg, db, journal, ghNotice, DRY, codex, codexText, deployArm, deleteWorker, photograph, stillborn, numstat, gitLock, RateLimited, now, cfEnv });
 
 const release = lock(path.join(cfg.workdir, ".tmp", "evolve.lock"));
@@ -803,6 +834,15 @@ try {
   }
   await ensureSchema();
   const only = argv("--species");
+  if (args.includes("--redeploy-champion")) {
+    for (const sp of cfg.species.filter((s) => !only || s.id === only)) {
+      await redeployChampion(sp).catch(async (e) => {
+        log(`[${sp.id}] hotfix failed: ${e.stack ?? e}`);
+        await journal(sp.id, "note", null, `hotfix failed: ${String(e.message).slice(0, 800)}`).catch(() => {});
+      });
+    }
+    process.exitCode = 0;
+  } else
   for (const sp of cfg.species.filter((s) => !only || s.id === only)) {
     try {
       await cycle(sp);
