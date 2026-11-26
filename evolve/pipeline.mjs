@@ -337,7 +337,7 @@ ${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new
 
       // 4. Publish the PR (the engine pushes; agents never hold credentials).
       await gitLock(() => must("git", ["push", "-q", "-f", "origin", `HEAD:refs/heads/${branch}`], { cwd: wt }));
-      const prBody = `${result.summary ?? ""}\n\n---\n**Mutant** \`${armId}\` (${size}, parent \`${parent.arm_id}\`)${ctx.revival ? `, revival of \`${ctx.revival.root}\`` : ""}\n\n**Hypothesis:** ${hyp.hypothesis}${hyp.implements_issue ? `\n\nPart of #${hyp.implements_issue}` : ""}\n\n_Built and reviewed by the Darwinian engine; merged only if it wins selection._`;
+      const prBody = `${result.summary ?? ""}\n\n---\n**Mutant** \`${armId}\` (${size}, parent \`${parent.arm_id}\`)${ctx.revival ? `, revival of \`${ctx.revival.root}\`` : ""}${tour ? `\n\n**Tournament** \`${tour.id}\`, variant ${tour.idx + 1} of ${tour.n}: ${direction}` : ""}${wip.state.builder === "codex" ? "\n\nBuilt by Codex." : ""}\n\n**Hypothesis:** ${hyp.hypothesis}${hyp.implements_issue ? `\n\nPart of #${hyp.implements_issue}` : ""}\n\n_Built and reviewed by the Darwinian engine; merged only if it wins selection._`;
       await checkpoint("pr");
       const opened = await openPR(repoSlug, { base: baseBranch, head: branch, title: result.title ?? hyp.title, body: prBody });
       const topPr = { ...opened, branch, base: baseBranch, head: (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim(), title: result.title ?? hyp.title };
