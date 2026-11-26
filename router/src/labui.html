@@ -923,7 +923,7 @@ function openArm(id, quiet) {
   const pages = [...new Set(shotsOf(id).map((m) => m.page))];
   if (!pages.includes(viewer.page)) viewer.page = pages[0] || "/";
   const video = D.media.find((m) => m.arm_id === id && m.kind === "video");
-  const alive = ["live", "champion", "control", "nursery"].includes(a.status);
+  const alive = ["live", "champion", "control", "nursery", "guard"].includes(a.status);
   const spInfo = D.species.find((x) => x.id === SP) || {};
   const visit = spInfo.domain ? `https://${spInfo.domain}/_dw/lab/visit?arm=${encodeURIComponent(id)}&t=${D.handoff}` : null;
   const ghBase = `https://github.com/${D.repo}`;
