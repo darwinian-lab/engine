@@ -48,6 +48,14 @@
       "phases": [
         { "label": "today", "browser": "same", "task": "You need QR codes for several stall pages (e.g. https://craftfair.example/stall/1 up to /stall/3 for now). Make and download them as efficiently as the site allows, and note what would make doing 20 easier." }
       ]
+    },
+    {
+      "id": "bakery-marketing-buyer",
+      "who": "Lena, 45, marketing coordinator for three bakeries. She is printing 2,000 table cards and flyers with a QR code to the online order page, which will move to a new shop system in a few months. Reprinting would cost hundreds. She can spend up to about $25 on a tool without asking anyone, but has been burned by QR sites whose codes stopped working when a trial ended.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Get a QR code for the bakeries' online order page (https://order.example-bakery.com/menu) that you can safely print, knowing the link will change in a few months. Decide, as Lena, whether a paid option is worth it; buy only if you really would." }
+      ]
     }
   ]
 }

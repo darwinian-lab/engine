@@ -134,7 +134,27 @@ export const NURSERY_DEFAULTS = {
   spawnPerCycle: 3,
   nurseryMaxDays: 7,
   fieldMaxDays: 21,
+  // Money (engine capability: payments). Checkout starts and purchases, real and simulated, per visitor/session.
+  moneyStartWeight: 1, // gain per percentage point of checkout-start rate (same scale as the success rate)
+  moneyBuyWeight: 3, // gain per percentage point of purchase rate
+  moneyMargin: 0.03, // a money regression = a checkout-start rate more than 3 points below the champion's
+  moneyMinStarts: 2, // the champion needs this many starts before "fewer checkouts" can block a merge
 };
+
+/** Combine real and simulated money stats per arm: {trials, starts, buys}. */
+export function combineMoney(money, lambda) {
+  const out = {};
+  for (const [id, m] of Object.entries(money ?? {})) {
+    const r = m.real ?? {}, s = m.sims ?? {};
+    out[id] = {
+      trials: (r.trials ?? 0) + lambda * (s.trials ?? 0),
+      starts: (r.starts ?? 0) + lambda * (s.starts ?? 0),
+      buys: (r.buys ?? 0) + lambda * (s.buys ?? 0),
+      revenue: r.revenue ?? 0,
+    };
+  }
+  return out;
+}
 
 /**
  * Selection with simulated and real evidence combined.
@@ -166,9 +186,16 @@ function erf(x) {
   return x >= 0 ? y : -y;
 }
 
-export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, weeklyReal, now = Date.now(), opts = {} }) {
+export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, money = {}, weeklyReal, now = Date.now(), opts = {} }) {
   const o = { ...NURSERY_DEFAULTS, ...opts };
   const lambda = o.simWeight / (1 + weeklyReal / o.simFadeAt);
+  const cash = combineMoney(money, lambda);
+  const rate = (id, k) => { const m = cash[id]; return m ? (m[k] + 1) / (m.trials + 2) : null; };
+  const moneyGain = (id, cid) => {
+    const [as, cs, ab, cb] = [rate(id, "starts"), rate(cid, "starts"), rate(id, "buys"), rate(cid, "buys")];
+    if (as == null || cs == null) return 0;
+    return 100 * (o.moneyStartWeight * (as - cs) + o.moneyBuyWeight * (ab - cb));
+  };
   const combined = {};
   for (const a of arms) {
     const r = real[a.arm_id] ?? { trials: 0, successes: 0 };
@@ -190,7 +217,7 @@ export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, week
   // evidence, it is NOT worse than the champion on any of three signals: success rate (real + simulated), the
   // simulated people's experience score, and blinded side-by-side preferences. Clear winners are merged first, and
   // small, neutral improvements accumulate instead of waiting for proof of superiority.
-  const preg = {}, qreg = {}, pairPref = {}, gain = {};
+  const preg = {}, qreg = {}, pairPref = {}, gain = {}, mreg = {};
   const cid = champion?.arm_id;
   for (const a of arms) {
     if (!cid || a.arm_id === cid) continue;
@@ -198,7 +225,9 @@ export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, week
     qreg[a.arm_id] = qualityRegress(quality[a.arm_id], quality[cid], o.scoreMargin);
     const p = pairs[a.arm_id];
     pairPref[a.arm_id] = p && p.n ? (1 + p.wins + 0.5 * p.ties) / (2 + p.n) : null;
-    gain[a.arm_id] = 100 * (mean(a.arm_id) - mean(cid)) + ((quality[a.arm_id]?.mean ?? 0) - (quality[cid]?.mean ?? 0)) + 20 * ((pairPref[a.arm_id] ?? 0.5) - 0.5);
+    gain[a.arm_id] = 100 * (mean(a.arm_id) - mean(cid)) + ((quality[a.arm_id]?.mean ?? 0) - (quality[cid]?.mean ?? 0)) + 20 * ((pairPref[a.arm_id] ?? 0.5) - 0.5) + moneyGain(a.arm_id, cid);
+    const ma = cash[a.arm_id], mc = cash[cid];
+    mreg[a.arm_id] = ma && mc && mc.starts >= o.moneyMinStarts ? probRegress({ trials: ma.trials, successes: ma.starts }, { trials: mc.trials, successes: mc.starts }, o.moneyMargin) : null;
   }
   // Finalists already won once; replayed onto the new main they only need a quick check that nothing regressed.
   const isFinalist = (id) => Boolean(arms.find((a) => a.arm_id === id)?.finalist_of);
@@ -209,7 +238,8 @@ export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, week
   const notWorse = (id) =>
     preg[id] < o.maxRegress &&
     (qreg[id] == null || qreg[id] < o.maxQualityRegress) &&
-    (pairPref[id] == null || pairPref[id] >= o.minPairPref);
+    (pairPref[id] == null || pairPref[id] >= o.minPairPref) &&
+    (mreg[id] == null || mreg[id] < o.maxRegress); // never merge something that clearly loses checkouts
   let promotions = [];
   if (!anySuccess) return { promote: null, promotions: [], retire: [], graduate: [], spawn: Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - arms.filter((a) => a.status === "nursery").length)), pb, pbeat: {}, combined, lambda, blind: true };
   if (champion && judged(champion.arm_id)) {
@@ -249,5 +279,5 @@ export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, week
     .map((a) => a.arm_id);
   const nurseryLeft = arms.filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && !graduate.includes(a.arm_id) && !winning.has(a.arm_id)).length;
   const spawn = Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - nurseryLeft));
-  return { promote, promotions, retire, graduate, spawn, pb, pbeat, loss, preg, qreg, pairPref, gain, combined, lambda };
+  return { promote, promotions, retire, graduate, spawn, pb, pbeat, loss, preg, qreg, mreg, pairPref, gain, combined, cash, lambda };
 }

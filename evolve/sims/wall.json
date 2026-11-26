@@ -52,6 +52,14 @@
       "phases": [
         { "label": "today", "browser": "same", "task": "You want a page of student testimonials you can link from your Instagram bio. Set it up and get the public page link you'd put in your bio." }
       ]
+    },
+    {
+      "id": "studio-owner-buyer",
+      "who": "Sofia, 38, runs a small yoga studio with a Squarespace website. Looked at Senja and found $29/month too much for her size. She has a company card and will pay a fair price (up to about $10/month or $50 once) to remove someone else's branding and match her studio's colours, but only if it is clearly worth it and easy to cancel. Hates pushy upsells.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Set up a way to collect testimonials from your students and get the widget you'd put on your website. Then decide, as Sofia, whether any paid option is worth it for you: if it is, get it; if not, don't." }
+      ]
     }
   ]
 }

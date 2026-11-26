@@ -7,8 +7,9 @@ import { matchEvents, type SpeciesConfig } from "./config";
 import { aggregate } from "./aggregate";
 import { lab, isOwner } from "./lab";
 import { TRACKER_JS } from "./tracker";
+import { handlePay, mayHavePaid, paidSkus, payReady, type PayEnv } from "./pay";
 
-export interface Env {
+export interface Env extends PayEnv {
   DB: D1Database;
   SPECIES: string;
   ROUTER_KEY: string; // shared secret: mutants only serve requests carrying it
@@ -78,7 +79,7 @@ function newId(): string {
   return Array.from(b, (x) => x.toString(36).padStart(2, "0")).join("").slice(0, 16);
 }
 
-async function logEvent(
+export async function logEvent(
   env: Env,
   e: { arm: string; visitor: string; segment: string; name: string; path?: string; value?: number; props?: unknown },
 ) {
@@ -99,14 +100,15 @@ async function logEvent(
     .run();
   // Keep the incremental stats tables current (see migrations/0010). Never fail the event because of them.
   const t = Date.now();
-  const counted = e.name === "pageview" || e.name === "http_5xx" || e.name === "purchase";
+  const money = e.name === "purchase" ? e.value ?? 0 : e.name === "refund" ? -(e.value ?? 0) : 0;
+  const counted = e.name === "pageview" || e.name === "http_5xx" || e.name === "purchase" || e.name === "refund";
   const firsts = !counted || e.name === "purchase" ? !e.name.startsWith("c:") : false;
   const stmts = [];
   if (counted)
     stmts.push(
       env.DB.prepare(
         "INSERT INTO arm_hourly (species, arm_id, hour, requests, errors, revenue) VALUES (?,?,?,?,?,?) ON CONFLICT (species, arm_id, hour) DO UPDATE SET requests = requests + excluded.requests, errors = errors + excluded.errors, revenue = revenue + excluded.revenue",
-      ).bind(env.SPECIES, e.arm, Math.floor(t / 3600_000), e.name === "purchase" ? 0 : 1, e.name === "http_5xx" ? 1 : 0, e.name === "purchase" ? e.value ?? 0 : 0),
+      ).bind(env.SPECIES, e.arm, Math.floor(t / 3600_000), e.name === "purchase" || e.name === "refund" ? 0 : 1, e.name === "http_5xx" ? 1 : 0, money),
     );
   if (firsts)
     stmts.push(
@@ -115,10 +117,14 @@ async function logEvent(
   if (stmts.length) await env.DB.batch(stmts).catch(() => {});
 }
 
-async function proxy(req: Request, arm: Arm, env: Env, visitor: string): Promise<Response> {
+async function proxy(req: Request, arm: Arm, env: Env, visitor: string, pay: { ready: boolean; paid: string[] } = { ready: false, paid: [] }): Promise<Response> {
   const inUrl = new URL(req.url);
   const target = new URL(inUrl.pathname + inUrl.search, arm.origin);
   const headers = new Headers(req.headers);
+  // What this visitor owns comes only from the router (never trust a client-sent header).
+  headers.delete("x-dw-paid");
+  headers.set("x-dw-pay", pay.ready ? "1" : "0");
+  if (pay.paid.length) headers.set("x-dw-paid", pay.paid.join(","));
   headers.set("x-dw-key", env.ROUTER_KEY);
   headers.set("x-dw-arm", arm.arm_id);
   headers.set("x-dw-visitor", visitor);
@@ -174,7 +180,7 @@ async function simulated(req: Request, env: Env, ctx: ExecutionContext, st: Stat
   const arm = st.all.find((a) => a.arm_id === c.dw_arm);
   if (!arm) return new Response("This simulated session's arm is gone.", { status: 410 });
   const visitor = c.dw_vid || "sim-unknown";
-  const res = await proxy(req, arm, env, visitor);
+  const res = await proxy(req, arm, env, visitor, { ready: true, paid: await paidSkus(env, visitor) });
   const isHtml = (res.headers.get("content-type") ?? "").includes("text/html");
   const tasks: Promise<unknown>[] = [];
   const log = (name: string) => tasks.push(logEvent(env, { arm: arm.arm_id, visitor, segment: "sim", name, path: url.pathname }));
@@ -226,7 +232,13 @@ export default {
       return res;
     }
     const c0 = cookies(req);
-    if (c0.dw_sim && env.ROUTER_KEY && c0.dw_sim === (await simToken(env.ROUTER_KEY))) return simulated(req, env, ctx, st, c0);
+    const isSim = Boolean(c0.dw_sim && env.ROUTER_KEY && c0.dw_sim === (await simToken(env.ROUTER_KEY)));
+    if (url.pathname.startsWith("/_dw/pay/")) {
+      const owner = await isOwner(req, env);
+      const bot = BOT_RE.test(req.headers.get("user-agent") ?? "");
+      return handlePay(req, env, st.cfg, { visitor: bot ? null : c0.dw_vid ?? null, arm: c0.dw_arm ?? null, segment: segmentOf(req), sim: isSim, owner }, logEvent, (p) => ctx.waitUntil(p));
+    }
+    if (isSim) return simulated(req, env, ctx, st, c0);
     if (st.arms.length === 0) return new Response("Warming up. Please try again shortly.", { status: 503 });
 
     const ua = req.headers.get("user-agent") ?? "";
@@ -236,7 +248,7 @@ export default {
     // Crawlers and shared infrastructure (embeds, robots, sitemaps) see the current best arm, untracked.
     if (isBot || passthrough) {
       const arm = bestByMean(st.arms, st.stats) ?? st.arms[0];
-      const res = await proxy(req, arm, env, "anon");
+      const res = await proxy(req, arm, env, "anon", { ready: payReady(env, st.cfg), paid: [] });
       const credit = res.headers.get("x-dw-credit");
       if (!credit) return res;
       // e.g. a stranger leaves a testimonial on someone's public wall: credit the wall owner's arm.
@@ -267,9 +279,10 @@ export default {
       setCookies.push(`dw_arm=${arm.arm_id}; Path=/; Max-Age=${YEAR}; Secure; HttpOnly; SameSite=Lax`);
     }
 
+    const pay = { ready: payReady(env, st.cfg), paid: mayHavePaid(c, false) ? await paidSkus(env, visitor).catch(() => []) : [] };
     let res: Response;
     try {
-      res = await proxy(req, arm, env, visitor);
+      res = await proxy(req, arm, env, visitor, pay);
     } catch (err) {
       ctx.waitUntil(logEvent(env, { arm: arm.arm_id, visitor, segment, name: "http_5xx", path: url.pathname }));
       return new Response("Something went wrong. Please refresh.", { status: 502 });

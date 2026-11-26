@@ -50,6 +50,14 @@
       "phases": [
         { "label": "today", "browser": "same", "task": "Make a resume that will pass applicant tracking systems (invent details), check whatever the site says about ATS, and download it." }
       ]
+    },
+    {
+      "id": "job-switcher-buyer",
+      "who": "Kemal, 27, junior data analyst applying to about 30 jobs. Last year a resume site's $2.95 'trial' silently renewed at $24, so he is suspicious of anything paid. He needs a polished resume and, for some applications, a matching cover letter and a Word version. He would pay a small one-time amount (under $15) if it saves him real time and there is clearly no subscription.",
+      "device": "desktop",
+      "phases": [
+        { "label": "today", "browser": "same", "task": "Make your resume for a junior data analyst role and download it. You also need a cover letter for one application, and one portal asks for a Word file. Decide, as Kemal, whether anything paid is worth it; buy only if you really would." }
+      ]
     }
   ]
 }

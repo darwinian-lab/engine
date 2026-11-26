@@ -1,0 +1,31 @@
+name: paddle
+# Connects Paddle to every species (products, prices, client token, webhooks, router secrets). Idempotent:
+# run it after adding the PADDLE_API_KEY secret, and again whenever a species' offers change.
+on:
+  workflow_dispatch:
+    inputs:
+      dry: { description: "Dry run (no changes)", type: boolean, default: false }
+  push:
+    branches: [main]
+    paths: [ops/paddle-sync.txt]
+concurrency: { group: paddle, cancel-in-progress: false }
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PADDLE_API_KEY: ${{ secrets.PADDLE_API_KEY }}
+      PADDLE_CLIENT_TOKEN: ${{ secrets.PADDLE_CLIENT_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DW_GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Skip until the owner has added PADDLE_API_KEY
+        id: gate
+        run: if [ -z "$PADDLE_API_KEY" ]; then echo "::warning::PADDLE_API_KEY secret is not set yet"; echo "skip=1" >> $GITHUB_OUTPUT; fi
+      - if: steps.gate.outputs.skip != '1'
+        run: node scripts/paddle-setup.mjs ${{ inputs.dry && '--dry' || '' }}

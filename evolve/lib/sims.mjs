@@ -364,6 +364,32 @@ export async function runSims({ cfg, db, sp, stageEvent, arms, personas, budget,
   return results;
 }
 
+/**
+ * Money per arm over the last 14 days (engine capability: payments): {real: {trials, starts, buys, revenue},
+ * sims: {trials, starts, buys}}. Real trials are the arm's judged visitors (arm_stats); simulated trials are the
+ * distinct simulated visitors who browsed it. Starts/buys are distinct visitors who opened a checkout / paid.
+ */
+export async function moneyStatsFor(db, spId) {
+  const since = Date.now() - 14 * 86400_000;
+  const [firsts, simVisitors, real, revenue] = await Promise.all([
+    db.all(
+      `SELECT arm_id, segment = 'sim' AS sim, name, COUNT(DISTINCT visitor) n FROM visitor_firsts
+       WHERE species=? AND ts>? AND name IN ('checkout_start','purchase') GROUP BY arm_id, segment = 'sim', name`,
+      [spId, since],
+    ),
+    db.all(`SELECT arm_id, COUNT(DISTINCT visitor) n FROM events WHERE species=? AND ts>? AND segment='sim' AND name='pageview' GROUP BY arm_id`, [spId, since]),
+    db.all("SELECT arm_id, trials, revenue FROM arm_stats WHERE species=? AND segment='all'", [spId]),
+    db.all("SELECT arm_id, SUM(revenue) r FROM arm_hourly WHERE species=? AND hour>=? GROUP BY arm_id", [spId, Math.floor(since / 3600_000)]),
+  ]);
+  const out = {};
+  const at = (id) => (out[id] ??= { real: { trials: 0, starts: 0, buys: 0, revenue: 0 }, sims: { trials: 0, starts: 0, buys: 0 } });
+  for (const r of real) at(r.arm_id).real.trials = r.trials ?? 0;
+  for (const r of revenue) at(r.arm_id).real.revenue = r.r ?? 0;
+  for (const r of simVisitors) at(r.arm_id).sims.trials = r.n;
+  for (const r of firsts) at(r.arm_id)[r.sim ? "sims" : "real"][r.name === "purchase" ? "buys" : "starts"] = r.n;
+  return out;
+}
+
 /** Sim stats per arm over the last 14 days (errors excluded). */
 export async function simStatsFor(db, spId, agent = null) {
   // Only sessions from the current simulator count (see migrations/0007_sim_agent.sql).

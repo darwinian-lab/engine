@@ -26,7 +26,7 @@ or the measurement.
 4. **Don't destroy shared data.** All arms share the species' database. Migrations may only
    add tables, columns or indexes. Never drop, rename, or rewrite existing data.
 5. **Privacy.** Collect only what the feature needs. No third-party trackers, ad pixels or
-   fingerprinting. No selling or sharing data. Keep `/privacy` and `/terms` accurate.
+   fingerprinting. The only third-party services allowed are the engine capabilities in `src/_dw.ts` (accounts via Clerk, payments via Paddle). No selling or sharing data. Keep `/privacy` and `/terms` accurate.
 6. **Legal and safe.** No impersonating other brands, no copyrighted assets you don't have
    rights to, no claims you can't back up, no content that facilitates fraud or phishing.
 7. **Stay alive.** Keep the site fast, accessible, mobile-friendly and working. All protected

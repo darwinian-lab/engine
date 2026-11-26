@@ -15,6 +15,16 @@ export interface Stage {
   advanceAt?: number; // weekly successes (species-wide) needed to move to the next stage
 }
 
+/** Something a visitor can buy (engine capability: payments). Checkout is run by the router, never by an arm. */
+export interface Offer {
+  sku: string; // stable id, e.g. "pro_lifetime"
+  name: string; // shown at checkout, e.g. "Kudospage Pro (lifetime)"
+  price: number; // in currency units, e.g. 29
+  currency?: string; // default USD
+  interval?: "month" | "year"; // recurring; omitted = one-time payment
+  describe?: string; // what the buyer gets (guidance for mutants, shown at checkout as the product description)
+}
+
 export interface SpeciesConfig {
   species: string;
   brand: { name: string; domain: string; tagline?: string };
@@ -24,6 +34,7 @@ export interface SpeciesConfig {
   population?: number; // live evolving arms to maintain (default 3)
   controlShare?: number; // share of new visitors pinned to the frozen control (default 0.1)
   protected?: string[]; // files mutants may not touch
+  offers?: Offer[]; // what visitors can buy (see router/src/pay.ts)
 }
 
 export function matchEvents(

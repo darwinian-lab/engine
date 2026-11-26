@@ -13,7 +13,7 @@ import { loadConfig } from "./lib/config.mjs";
 import { mutationSize, decideNursery, probRegress, NURSERY_DEFAULTS } from "./lib/select.mjs";
 import { gate } from "./lib/gates.mjs";
 import { mutationPrompt, repairPrompt, auditPrompt, auditFixPrompt, curatorPrompt, ideationPrompt } from "./lib/prompts.mjs";
-import { loadPersonas, runSims, simStatsFor, simDigest, qualityFor, pairStatsFor } from "./lib/sims.mjs";
+import { loadPersonas, runSims, simStatsFor, simDigest, qualityFor, pairStatsFor, moneyStatsFor } from "./lib/sims.mjs";
 import { pickRevivals, isRevivable } from "./lib/seeds.mjs";
 import { ensureLabels, listIssues, backlogText, applyCuration, createIssue, comment, closeIssue, parseImplements } from "./lib/issues.mjs";
 import { ENGINE_DIR } from "./lib/config.mjs";
@@ -592,7 +592,12 @@ async function cycle(sp) {
   const quality = await qualityFor(db, sp.id);
   const champRow = arms.find((a) => a.status === "champion");
   const pairs = champRow ? await pairStatsFor(db, sp.id, champRow.arm_id) : {};
-  const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control" && a.status !== "guard"), real, sims, quality, pairs, weeklyReal: weekly, opts: sel });
+  const money = await moneyStatsFor(db, sp.id).catch((e) => (log(`[${sp.id}] money stats unavailable: ${e.message}`), {}));
+  const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control" && a.status !== "guard"), real, sims, quality, pairs, money, weeklyReal: weekly, opts: sel });
+  {
+    const m = Object.entries(dec.cash ?? {}).filter(([, v]) => v.starts || v.buys || v.revenue);
+    if (m.length) ghNotice(`${sp.id} money`, m.map(([id, v]) => `${id}: ${v.starts.toFixed(1)} checkout starts, ${v.buys.toFixed(1)} buys, $${v.revenue.toFixed(2)} real revenue`).join("; "));
+  }
   if (dec.blind) await journal(sp.id, "note", null, "no simulated person or visitor succeeded on any arm this cycle; that usually means the measurement is broken, so no one was promoted, graduated or retired");
   ghNotice(`${sp.id} cycle`, `stage ${st.stage}, gen ${st.generation}, ${arms.length} alive, ${weekly} real visitors/wk, sim weight ${dec.lambda.toFixed(2)}, promote ${(dec.promotions ?? []).join(",") || "-"}, graduate ${dec.graduate.join(",") || "-"}, retire ${dec.retire.length}`);
   if (!DRY && Object.keys(dec.pb).length) {
