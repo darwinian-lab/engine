@@ -87,6 +87,8 @@
     "minTrials": 100,
     "minSimsPromote": 10,
     "minPairs": 2,
+    "finalistMinSims": 4,
+    "finalistMinPairs": 1,
     "regressMargin": 0.05,
     "maxRegress": 0.25,
     "scoreMargin": 3,

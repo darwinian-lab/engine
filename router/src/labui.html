@@ -256,6 +256,7 @@ const STATUS = {
   nursery: { label: "In the nursery", color: "var(--st-nursery)" },
   control: { label: "Frozen control", color: "var(--st-control)" },
   guard: { label: "Previous champion (rollback guard)", color: "var(--st-control)" },
+  finalist: { label: "Won; continues as a finalist", color: "var(--st-champion)" },
   retired: { label: "Retired", color: "var(--st-retired)" },
   dead: { label: "Died of errors", color: "var(--st-dead)" },
   stillborn: { label: "Stillborn", color: "var(--st-stillborn)" },
@@ -352,6 +353,8 @@ async function load(sp, keepDrawer) {
   const res = await fetch("/_dw/lab/api" + (sp ? "?species=" + encodeURIComponent(sp) : ""), { credentials: "same-origin" });
   if (!res.ok) { $("#main").innerHTML = `<p class="loading">Couldn't load the lab (HTTP ${res.status}). Open the lab link with your key again.</p>`; return; }
   D = await res.json();
+  // A winner replayed onto main lives on as its finalist: show it as that, not as plain "retired".
+  for (const a of D.arms) if (a.status === "retired" && /^won, then continued as finalist/.test(a.cause || "")) a.status = "finalist";
   SP = D.current;
   render();
   if (keepDrawer && SEL && armById(SEL)) openArm(SEL, true);

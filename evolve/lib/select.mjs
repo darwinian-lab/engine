@@ -119,6 +119,8 @@ export const NURSERY_DEFAULTS = {
   // Promotion = "not worse" with enough evidence (see decideNursery).
   minSimsPromote: 10, // simulated sessions before an arm can be merged
   minPairs: 2, // side-by-side comparisons with the champion before an arm can be merged
+  finalistMinSims: 4, // a finalist (a winner replayed onto the new main) only needs a quick confirmation
+  finalistMinPairs: 1,
   regressMargin: 0.05, // a regression means a success rate more than 5 points below the champion's
   maxRegress: 0.25, // merge only if P(regression) is below this (small samples can't do much better)
   scoreMargin: 3, // experience-score points that count as "worse"
@@ -198,7 +200,12 @@ export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, week
     pairPref[a.arm_id] = p && p.n ? (1 + p.wins + 0.5 * p.ties) / (2 + p.n) : null;
     gain[a.arm_id] = 100 * (mean(a.arm_id) - mean(cid)) + ((quality[a.arm_id]?.mean ?? 0) - (quality[cid]?.mean ?? 0)) + 20 * ((pairPref[a.arm_id] ?? 0.5) - 0.5);
   }
-  const enough = (id) => ((sims[id]?.trials ?? 0) >= o.minSimsPromote || (real[id]?.trials ?? 0) >= o.minTrials) && (o.minPairs <= 0 || (pairs[id]?.n ?? 0) >= o.minPairs);
+  // Finalists already won once; replayed onto the new main they only need a quick check that nothing regressed.
+  const isFinalist = (id) => Boolean(arms.find((a) => a.arm_id === id)?.finalist_of);
+  const enough = (id) => {
+    const [ms, mp] = isFinalist(id) ? [o.finalistMinSims, o.finalistMinPairs] : [o.minSimsPromote, o.minPairs];
+    return ((sims[id]?.trials ?? 0) >= ms || (real[id]?.trials ?? 0) >= o.minTrials) && (mp <= 0 || (pairs[id]?.n ?? 0) >= mp);
+  };
   const notWorse = (id) =>
     preg[id] < o.maxRegress &&
     (qreg[id] == null || qreg[id] < o.maxQualityRegress) &&
