@@ -53,7 +53,7 @@ ${titles.join("\n").slice(0, 8000) || "(none)"}
 ## Research angle for this run
 ${ANGLES[angle]}
 
-Use web search and fetch real pages. Then propose up to ${n} ideas that:
+Research properly before proposing: at least 8 searches and open the most relevant pages (not just snippets). Then propose up to ${n} ideas that:
 - are NOT already in the backlog above (not even reworded);
 - are honest (no dark patterns, no fake urgency or fake reviews) and buildable without paid external services or new API keys;
 - would make real visitors more likely to succeed, come back, recommend us or pay.
