@@ -97,6 +97,22 @@ async function logEvent(
       e.props ? JSON.stringify(e.props).slice(0, 500) : null,
     )
     .run();
+  // Keep the incremental stats tables current (see migrations/0010). Never fail the event because of them.
+  const t = Date.now();
+  const counted = e.name === "pageview" || e.name === "http_5xx" || e.name === "purchase";
+  const firsts = !counted || e.name === "purchase" ? !e.name.startsWith("c:") : false;
+  const stmts = [];
+  if (counted)
+    stmts.push(
+      env.DB.prepare(
+        "INSERT INTO arm_hourly (species, arm_id, hour, requests, errors, revenue) VALUES (?,?,?,?,?,?) ON CONFLICT (species, arm_id, hour) DO UPDATE SET requests = requests + excluded.requests, errors = errors + excluded.errors, revenue = revenue + excluded.revenue",
+      ).bind(env.SPECIES, e.arm, Math.floor(t / 3600_000), e.name === "purchase" ? 0 : 1, e.name === "http_5xx" ? 1 : 0, e.name === "purchase" ? e.value ?? 0 : 0),
+    );
+  if (firsts)
+    stmts.push(
+      env.DB.prepare("INSERT INTO visitor_firsts (species, arm_id, visitor, name, segment, ts) VALUES (?,?,?,?,?,?) ON CONFLICT (species, arm_id, visitor, name) DO UPDATE SET ts = excluded.ts").bind(env.SPECIES, e.arm, e.visitor, e.name, e.segment, t),
+    );
+  if (stmts.length) await env.DB.batch(stmts).catch(() => {});
 }
 
 async function proxy(req: Request, arm: Arm, env: Env, visitor: string): Promise<Response> {
@@ -296,8 +312,8 @@ export default {
   },
 
   async scheduled(ev: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    // Recount arm stats once an hour (every 15 minutes was most of the D1 read budget).
-    if (new Date(ev.scheduledTime).getUTCMinutes() < 15) ctx.waitUntil(aggregate(env));
+    // Recount arm stats every 15 minutes (cheap now: it reads the small incremental tables).
+    ctx.waitUntil(aggregate(env));
     // The heartbeat of evolution (only the router with GH_DISPATCH_TOKEN, i.e. qr, keeps the clock):
     // a breeding cycle every EVOLVE_EVERY_H hours, simulated users every hour, the growth loop once a day.
     const t = new Date(ev.scheduledTime);

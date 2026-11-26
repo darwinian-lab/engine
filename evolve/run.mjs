@@ -115,14 +115,21 @@ async function codexRaw(promptText, tag) {
 
 // Lab schema (migrations/0002_lab.sql) is applied idempotently on every run.
 async function ensureSchema() {
+  // Each migration file runs once; applied files are recorded (re-running them every cycle cost reads, and
+  // backfills must not repeat).
   const dir = path.join(ENGINE_DIR, "migrations");
-  const sql = fs.readdirSync(dir).filter((f) => f >= "0002").sort().map((f) => fs.readFileSync(path.join(dir, f), "utf8")).join(";\n").replace(/--.*$/gm, "");
-  for (const stmt of sql.split(";").map((x) => x.trim()).filter(Boolean)) {
-    try {
-      await db.run(stmt);
-    } catch (e) {
-      if (!/duplicate column/i.test(e.message)) log(`schema: ${e.message.slice(0, 200)}`);
+  await db.run("CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at INTEGER)");
+  const done = new Set((await db.all("SELECT name FROM _migrations")).map((r) => r.name));
+  for (const f of fs.readdirSync(dir).filter((f) => f >= "0002" && !done.has(f)).sort()) {
+    const sql = fs.readFileSync(path.join(dir, f), "utf8").replace(/--.*$/gm, "");
+    for (const stmt of sql.split(";").map((x) => x.trim()).filter(Boolean)) {
+      try {
+        await db.run(stmt);
+      } catch (e) {
+        if (!/duplicate column|already exists/i.test(e.message)) log(`schema ${f}: ${e.message.slice(0, 200)}`);
+      }
     }
+    await db.run("INSERT OR IGNORE INTO _migrations (name, applied_at) VALUES (?, ?)", [f, now()]);
   }
 }
 

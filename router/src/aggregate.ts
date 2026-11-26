@@ -24,11 +24,11 @@ export async function aggregate(env: Env) {
 
   const rows = await env.DB.prepare(
     `WITH seen AS (
-       SELECT DISTINCT arm_id, visitor, segment FROM events
+       SELECT arm_id, visitor, segment FROM visitor_firsts
        WHERE species = ?1 AND name = 'js_seen' AND ts > ?2 AND segment != 'sim'
      ),
      won AS (
-       SELECT DISTINCT arm_id, visitor FROM events
+       SELECT arm_id, visitor FROM visitor_firsts
        WHERE species = ?1 AND name = ?3 AND ts > ?2
      )
      SELECT s.arm_id, s.segment,
@@ -48,13 +48,10 @@ export async function aggregate(env: Env) {
     .all<{ arm_id: string; segment: string; trials: number; successes: number }>();
 
   const health = await env.DB.prepare(
-    `SELECT arm_id,
-            SUM(CASE WHEN name IN ('pageview','http_5xx') THEN 1 ELSE 0 END) AS requests,
-            SUM(CASE WHEN name = 'http_5xx' THEN 1 ELSE 0 END) AS errors,
-            SUM(CASE WHEN name = 'purchase' THEN COALESCE(value,0) ELSE 0 END) AS revenue
-     FROM events WHERE species = ? AND name IN ('pageview','http_5xx','purchase') AND ts > ? AND segment != 'sim' GROUP BY arm_id`,
+    `SELECT arm_id, SUM(requests) AS requests, SUM(errors) AS errors, SUM(revenue) AS revenue
+     FROM arm_hourly WHERE species = ? AND hour >= ? GROUP BY arm_id`,
   )
-    .bind(sp, since)
+    .bind(sp, Math.floor(since / 3600_000))
     .all<{ arm_id: string; requests: number; errors: number; revenue: number }>();
   const h = new Map(health.results.map((r) => [r.arm_id, r]));
 
@@ -71,14 +68,12 @@ export async function aggregate(env: Env) {
 
   // Automatic rollback: an evolving arm erroring in the last hour dies; visitors get reassigned.
   const recent = await env.DB.prepare(
-    `SELECT e.arm_id,
-            SUM(CASE WHEN e.name IN ('pageview','http_5xx') THEN 1 ELSE 0 END) AS requests,
-            SUM(CASE WHEN e.name = 'http_5xx' THEN 1 ELSE 0 END) AS errors
-     FROM events e JOIN arms a ON a.species = e.species AND a.arm_id = e.arm_id
-     WHERE e.species = ? AND e.name IN ('pageview','http_5xx') AND e.ts > ? AND a.status IN ('live','champion')
-     GROUP BY e.arm_id`,
+    `SELECT h.arm_id, SUM(h.requests) AS requests, SUM(h.errors) AS errors
+     FROM arm_hourly h JOIN arms a ON a.species = h.species AND a.arm_id = h.arm_id
+     WHERE h.species = ? AND h.hour >= ? AND a.status IN ('live','champion')
+     GROUP BY h.arm_id`,
   )
-    .bind(sp, now - 3600_000)
+    .bind(sp, Math.floor((now - 3600_000) / 3600_000))
     .all<{ arm_id: string; requests: number; errors: number }>();
   for (const r of recent.results) {
     if (r.requests >= KILL_MIN_REQUESTS && r.errors / r.requests > KILL_ERROR_RATE) {
