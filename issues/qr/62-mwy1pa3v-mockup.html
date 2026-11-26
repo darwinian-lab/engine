@@ -1,0 +1,105 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Bulk QR Code Generator: CSV to ZIP, free | QRs That Last</title>
+<style>
+:root{--paper:#eef1ee;--sheet:#fff;--ink:#000;--ink-2:#3e4641;--ink-3:#6b746e;--rule:#c9d0cb;--signal:#0f9a4a;--signal-wash:#e0f3e7;--f:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--r:6px}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;overflow-x:clip;background:var(--paper);color:var(--ink);font:400 17px/1.55 var(--f);-webkit-font-smoothing:antialiased}
+a{color:inherit;text-underline-offset:3px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+.top{display:flex;align-items:center;justify-content:space-between;height:72px}
+.mark{display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.02em;text-decoration:none}
+.mark i{width:22px;height:22px;border:4px solid var(--ink);display:grid;place-items:center}
+.mark i:after{content:"";width:6px;height:6px;background:var(--ink)}
+.top nav a{margin-left:22px;text-decoration:none;color:var(--ink-2);font-size:15px;font-weight:500}
+h1{font-weight:800;font-size:clamp(38px,5.2vw,60px);line-height:.98;letter-spacing:-.045em;margin:30px 0 18px;max-width:14ch;text-wrap:balance}
+h2{font-weight:750;font-size:clamp(24px,3vw,30px);line-height:1.1;letter-spacing:-.03em;margin:0 0 14px}
+p{margin:0 0 14px}.lead{font-size:20px;line-height:1.5;color:var(--ink-2);max-width:52ch;margin-bottom:26px}
+.muted{color:var(--ink-3)}.small{font-size:14px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 22px;border-radius:var(--r);border:2px solid var(--ink);background:var(--ink);color:#fff;font:700 16px var(--f);cursor:pointer;text-decoration:none}
+.btn.ghost{background:transparent;color:var(--ink)}
+label{display:block;font-weight:650;font-size:14px;margin:18px 0 7px}
+input,select,textarea{width:100%;font:inherit;font-size:16px;padding:12px 14px;border:1.5px solid var(--rule);border-radius:var(--r);background:var(--sheet);color:var(--ink)}
+input[type=color]{height:48px;padding:5px}
+.seg{display:flex;flex-wrap:wrap;gap:4px;padding:4px;background:#e1e6e2;border-radius:9px;margin-bottom:14px;width:max-content;max-width:100%}
+.seg a{padding:8px 14px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;color:var(--ink-2)}
+.seg a[aria-current]{background:var(--sheet);color:var(--ink);box-shadow:0 1px 0 rgba(0,0,0,.08)}
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:0 48px;align-items:start;padding-bottom:64px}
+@media(max-width:880px){.grid{grid-template-columns:minmax(0,1fr);gap:28px}}
+.tabs{display:flex;gap:0;border-bottom:1.5px solid var(--rule);margin-top:6px}
+.tabs b{padding:10px 16px;font-size:15px;font-weight:650;color:var(--ink-3);border-bottom:3px solid transparent;margin-bottom:-1.5px}
+.tabs b.on{color:var(--ink);border-color:var(--ink)}
+textarea{font:14px/1.6 ui-monospace,Menlo,Consolas,monospace;white-space:pre;overflow:auto}
+.drop{margin-top:10px;border:1.5px dashed var(--ink-3);border-radius:var(--r);padding:12px 14px;font-size:14px;color:var(--ink-2);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.ok{display:inline-block;background:var(--signal-wash);color:#0a6b32;font-weight:650;font-size:14px;padding:4px 10px;border-radius:4px}
+.warn{color:#c4320a;font-weight:600;font-size:14px}
+.row{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:12px}
+@media(max-width:520px){.row{grid-template-columns:1fr 1fr}.row div:last-child{grid-column:1/-1}}
+.chk{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:4px;font-size:15px;font-weight:500}.chk span{display:flex;gap:8px;align-items:center}.chk input{width:18px;height:18px}
+.proof{position:relative;background:var(--sheet);padding:36px 32px 26px;border-radius:2px;box-shadow:0 1px 0 var(--rule),0 24px 48px -28px rgba(20,40,30,.35)}
+.stamp{position:absolute;top:-12px;right:-8px;transform:rotate(5deg);background:var(--signal);color:#fff;font-weight:750;font-size:14px;line-height:1.2;padding:9px 13px;border-radius:4px;box-shadow:0 6px 14px -6px rgba(15,154,74,.6)}
+.ph{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:14px}.ph h3{margin:0;font-size:19px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:420px){.cards{grid-template-columns:repeat(2,1fr)}.proof{padding:32px 16px 20px}}
+.card{border:1.5px solid var(--rule);border-radius:var(--r);padding:10px;text-align:center;min-width:0}
+.card svg{display:block;width:100%;height:auto;aspect-ratio:1}
+.card b{display:block;font-size:13px;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card span{display:block;font-size:12px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card.bad{border-color:#c4320a;background:#fdf1ed}
+.more{margin:12px 0 0;text-align:center;font-size:14px;color:var(--ink-3)}
+.dl{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:22px}@media(max-width:520px){.dl{grid-template-columns:1fr}}
+.formats{margin:12px 0 0;font-size:14px;color:var(--ink-3);text-align:center}
+section{padding:60px 0;border-top:1.5px solid var(--rule)}
+details{border-bottom:1.5px solid var(--rule);padding:18px 0;max-width:760px}summary{cursor:pointer;font-weight:650;font-size:18px}details p{margin:10px 0 0;color:var(--ink-2)}
+.foot{padding:36px 24px 52px;color:var(--ink-3);font-size:14px;border-top:1.5px solid var(--rule)}
+[data-note]{outline:0}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="q1" viewBox="0 0 21 21"><rect width="21" height="21" fill="#fff"/><g fill="none" stroke="#000" stroke-width="1"><rect x=".5" y=".5" width="6" height="6"/><rect x="14.5" y=".5" width="6" height="6"/><rect x=".5" y="14.5" width="6" height="6"/></g><path d="M2 2h3v3H2zM16 2h3v3h-3zM2 16h3v3H2zM8 0h1v2H8zM10 1h2v1h-2zM8 4h2v1H8zM11 3h1v3h-1zM0 8h2v1H0zM3 8h1v2H3zM5 9h2v1H5zM8 8h3v1H8zM12 8h1v2h-1zM14 8h2v1h-2zM17 9h3v1h-3zM0 11h1v2H0zM2 11h3v1H2zM6 12h1v1H6zM8 10h1v3H8zM10 11h2v1h-2zM13 11h1v2h-1zM15 12h3v1h-3zM19 11h2v1h-2zM8 14h2v1H8zM11 14h1v3h-1zM13 15h3v1h-3zM17 14h1v2h-1zM19 15h2v2h-2zM8 18h3v1H8zM12 18h1v3h-1zM14 17h2v1h-2zM16 19h2v2h-2zM9 16h1v1H9zM19 18h1v1h-1z"/></symbol>
+<symbol id="q2" viewBox="0 0 21 21"><rect width="21" height="21" fill="#fff"/><g fill="none" stroke="#000" stroke-width="1"><rect x=".5" y=".5" width="6" height="6"/><rect x="14.5" y=".5" width="6" height="6"/><rect x=".5" y="14.5" width="6" height="6"/></g><path d="M2 2h3v3H2zM16 2h3v3h-3zM2 16h3v3H2zM9 0h2v1H9zM8 2h1v3H8zM10 3h2v1h-2zM12 0h1v2h-1zM0 9h1v2H0zM2 8h2v1H2zM4 10h3v1H4zM8 7h1v2H8zM10 8h2v2h-2zM13 8h1v3h-1zM15 9h2v1h-2zM18 8h2v1h-2zM1 12h2v1H1zM4 13h1v1H4zM8 11h3v1H8zM12 12h2v1h-2zM16 11h1v3h-1zM18 12h3v1h-3zM8 15h1v3H8zM10 14h2v1h-2zM13 16h3v1h-3zM17 15h2v1h-2zM20 14h1v3h-1zM10 17h1v3h-1zM12 19h3v1h-3zM17 18h1v3h-1zM19 19h1v2h-1z"/></symbol>
+</defs></svg>
+<header class="wrap top"><a class="mark" href="/"><i></i>QRs That Last</a><nav><a href="/pricing">Pricing</a><a href="/about">Our promise</a></nav></header>
+<main><div class="wrap"><div class="grid">
+<div>
+<h1>Bulk QR codes from a list.</h1>
+<p class="lead">Paste a list or drop in a CSV. One design for all, one ZIP out. Static codes made in your browser: nothing uploaded, nothing to expire.</p>
+<nav class="seg" aria-label="QR code type"><a href="/">Link</a><a href="/wifi-qr-code-generator">WiFi</a><a href="/text-qr-code-generator">Text</a><a href="/email-qr-code-generator">Email</a><a href="/phone-qr-code-generator">Phone</a><a href="/sms-qr-code-generator">SMS</a><a href="/bulk-qr-code-generator" aria-current="page">Bulk</a></nav>
+<div data-note="New: paste a list or upload a CSV, one code per row">
+<div class="tabs"><b class="on">Paste list</b><b>Upload CSV</b></div>
+<label for="list">One row per code: content, file name, label</label>
+<textarea id="list" rows="7" spellcheck="false">https://cafe-nova.com/menu,table-01,Table 1
+https://cafe-nova.com/menu,table-02,Table 2
+https://cafe-nova.com/menu,table-03,Table 3
+https://cafe-nova.com/menu,table-04,Table 4
+https://cafe-nova.com/review,receipt,Leave a review
+https://cafe-nova.co/gift,gift-card,Gift cards
+...</textarea>
+<div class="drop"><span>or drop <b>codes.csv</b> here (first row can be headers)</span><a class="btn ghost" style="height:38px;font-size:14px" href="#">Choose file</a></div>
+<p style="margin:12px 0 0"><span class="ok">24 rows read</span> <span class="warn">&nbsp;1 needs a look: row 7 is empty</span></p>
+</div>
+<div class="row"><div><label for="fg">Code color</label><input id="fg" type="color" value="#000000"></div><div><label for="bg">Background</label><input id="bg" type="color" value="#ffffff"></div><div><label for="ecc">Damage tolerance</label><select id="ecc"><option>Normal</option><option>Low (simplest)</option><option>High</option><option>Highest (for logos)</option></select></div></div>
+<label>Include in ZIP</label>
+<div class="chk"><span><input type="checkbox" checked> PNG, 1200 px</span><span><input type="checkbox" checked> SVG for print</span><span><input type="checkbox" checked> Printable sheet (A4 / Letter)</span></div>
+</div>
+<div>
+<div class="proof"><span class="stamp">Static codes.<br>Work forever.</span>
+<div class="ph"><h3>Preview</h3><span class="muted small">Same design on all 24 codes</span></div>
+<div class="cards" data-note="New: every row previewed with its file name and label">
+<div class="card"><svg><use href="#q1"/></svg><b>Table 1</b><span>table-01</span></div>
+<div class="card"><svg><use href="#q2"/></svg><b>Table 2</b><span>table-02</span></div>
+<div class="card"><svg><use href="#q1"/></svg><b>Table 3</b><span>table-03</span></div>
+<div class="card"><svg><use href="#q2"/></svg><b>Table 4</b><span>table-04</span></div>
+<div class="card"><svg><use href="#q1"/></svg><b>Leave a review</b><span>receipt</span></div>
+<div class="card"><svg><use href="#q2"/></svg><b>Gift cards</b><span>gift-card</span></div>
+</div>
+<p class="more">Showing 6 of 24. <a href="#">Show all</a></p>
+<div class="dl"><button type="button" class="btn" data-note="New: one ZIP with every code plus a printable sheet">Download ZIP (24 codes)</button><button type="button" class="btn ghost">Sheet only</button></div>
+<p class="formats">ZIP holds 24 PNG + 24 SVG + sheet.pdf. Files are named from column 2. Made in your browser; your list never leaves this device.</p>
+<p class="formats" style="margin-top:4px">No sign-up, no watermark, free for commercial use.</p>
+</div></div>
+</div></div>
+<section><div class="wrap"><h2>Questions</h2>
+<details><summary>How many codes can I make at once?</summary><p>Up to 500 per batch. Everything is generated on your device, so very large lists may take a moment.</p></details>
+<details><summary>Do bulk codes expire?</summary><p>No. Each is a static code with its content stored in the pattern itself.</p></details>
+<details><summary>What should my CSV look like?</summary><p>One row per code: content first, then an optional file name and label. <a href="#">Download an example CSV</a>.</p></details>
+</div></section></main>
+<footer class="wrap foot"><p>© 2026 QRs That Last. Static QR codes made here keep working even if this website disappears.</p></footer>
+</body></html>
