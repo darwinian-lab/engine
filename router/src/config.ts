@@ -35,6 +35,9 @@ export interface SpeciesConfig {
   controlShare?: number; // share of new visitors pinned to the frozen control (default 0.1)
   protected?: string[]; // files mutants may not touch
   offers?: Offer[]; // what visitors can buy (see router/src/pay.ts)
+  pinned?: string[]; // path regexes real visitors always get from the champion (pricing/legal pages a payment
+  // provider reviews must be identical for everyone); events still count for the visitor's own arm. Simulated
+  // people still see each arm's own version, so these pages keep evolving in the nursery.
 }
 
 export function matchEvents(

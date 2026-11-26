@@ -813,6 +813,9 @@ async function redeployChampion(sp) {
       return journal(sp.id, "reject", champion.arm_id, `hotfix ${sha} not deployed: migration ${f} is not additive`);
   }
   if (DRY) return log(`[${sp.id}] dry-run: hotfix ${sha} passed the gates; not deploying`);
+  // Publish the species config too (offers, pinned paths...), as a cycle would.
+  const species = JSON.parse(fs.readFileSync(path.join(repo, "species.json"), "utf8"));
+  await db.run("INSERT INTO species_config (species, json, updated_at) VALUES (?,?,?) ON CONFLICT(species) DO UPDATE SET json=excluded.json, updated_at=excluded.updated_at", [sp.id, JSON.stringify({ ...species, domain: sp.domain }), now()]);
   await must("npx", ["wrangler", "d1", "migrations", "apply", `sp-${sp.id}`, "--remote"], { cwd: repo, env: cfEnv, timeoutMs: 5 * 60_000 });
   await deployArm(sp, repo, champion.arm_id);
   await journal(sp.id, "note", champion.arm_id, `hotfix: champion ${champion.arm_id} redeployed from main ${sha}`);

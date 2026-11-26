@@ -303,9 +303,12 @@ export default {
     }
 
     const pay = { ready: payReady(env, st.cfg), paid: mayHavePaid(c, false) ? await paidSkus(env, visitor).catch(() => []) : [] };
+    const pinned = (st.cfg?.pinned ?? []).some((p) => new RegExp(p).test(url.pathname));
+    // Buyers always get the champion: it is the arm guaranteed to deliver what they paid for.
+    const serveArm = pinned || pay.paid.length ? bestByMean(st.arms, st.stats) ?? arm : arm;
     let res: Response;
     try {
-      res = await proxy(req, arm, env, visitor, pay);
+      res = await proxy(req, serveArm, env, visitor, pay);
     } catch (err) {
       ctx.waitUntil(logEvent(env, { arm: arm.arm_id, visitor, segment, name: "http_5xx", path: url.pathname }));
       return new Response("Something went wrong. Please refresh.", { status: 502 });
