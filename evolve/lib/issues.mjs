@@ -36,7 +36,7 @@ export async function ensureLabels(repo) {
 }
 
 export async function listIssues(repo) {
-  const out = await gh(["issue", "list", "-R", repo, "--state", "open", "--limit", "60", "--json", "number,title,body,labels,comments,reactionGroups,createdAt"]);
+  const out = await gh(["issue", "list", "-R", repo, "--state", "open", "--limit", "200", "--json", "number,title,body,labels,comments,reactionGroups,createdAt"]);
   return JSON.parse(out).map((i) => {
     const labels = (i.labels ?? []).map((l) => l.name);
     const thumbs = (i.reactionGroups ?? []).find((g) => g.content === "THUMBS_UP")?.users?.totalCount ?? 0;
@@ -63,11 +63,13 @@ export function rankIssues(issues) {
   const w = { discussion: 6, owner: 5, user: 4, behavior: 4, growth: 3, sim: 1, ideation: 1 };
   return issues.slice().sort((a, b) => (w[b.source] ?? 0) - (w[a.source] ?? 0) || b.votes - a.votes || a.number - b.number);
 }
-const SOURCE_LABEL = { discussion: "AGREED WITH THE OWNER", owner: "OWNER REQUEST", user: "REAL USER REQUEST", behavior: "SEEN IN REAL VISITORS" };
+const SOURCE_LABEL = { discussion: "AGREED WITH THE OWNER", owner: "OWNER REQUEST", user: "REAL USER REQUEST", behavior: "SEEN IN REAL VISITORS", ideation: "AGENT-FOUND IDEA" };
 
-export function backlogText(issues, n = 10) {
-  return rankIssues(issues)
-    .slice(0, n)
+export function backlogText(issues, n = 10, ideas = 6) {
+  const top = rankIssues(issues).slice(0, n);
+  // Agent-found ideas always get a few lines, newest first, so exploration slots have something to pick from.
+  const extra = issues.filter((i) => i.source === "ideation" && !top.includes(i)).sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")) || b.number - a.number).slice(0, ideas);
+  return [...top, ...extra]
     .map((i) => `- ${i.number ? `#${i.number}` : "(not filed yet)"} (${SOURCE_LABEL[i.source] ?? `${i.source}, ${i.votes} vote${i.votes === 1 ? "" : "s"}`}) ${i.title}: ${i.body.replace(/\s+/g, " ").slice(0, 300)}`)
     .join("\n");
 }

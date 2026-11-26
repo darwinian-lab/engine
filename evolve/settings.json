@@ -187,5 +187,11 @@
     "minPairs": 2,
     "maxPairs": 6,
     "maxDays": 4
+  },
+  "ideas": {
+    "perRun": 4,
+    "model": "sonnet",
+    "maxOpen": 30,
+    "slotShare": 0.25
   }
 }

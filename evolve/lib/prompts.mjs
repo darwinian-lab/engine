@@ -300,9 +300,11 @@ export function hypothesisPrompt(ctx) {
 
 You are the first step of building one mutant. Study the repository (CLAUDE.md, CHARTER.md, BRIEF.md, LESSONS.md and
 the code), then choose ONE hypothesis about what would make more real people succeed. Size: ${ctx.size}.
-If the backlog has items marked AGREED WITH THE OWNER or OWNER REQUEST that no sibling is already building, pick one
+${ctx.explore ? `This mutant is an EXPLORATION slot: do NOT pick items marked AGREED WITH THE OWNER or OWNER REQUEST (other
+mutants build those). Pick the most promising AGENT-FOUND IDEA from the backlog that no sibling is building, or your
+own bold idea from what real or simulated people struggled with.` : `If the backlog has items marked AGREED WITH THE OWNER or OWNER REQUEST that no sibling is already building, pick one
 of those (in the order listed). Otherwise prefer a backlog item that fits, or a clear idea from what real or simulated
-people struggled with.
+people struggled with.`}
 Pick a direction different from the siblings. Be concrete enough that a separate team can build it without you.
 
 Answer with ONLY a JSON object:

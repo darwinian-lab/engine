@@ -13,7 +13,7 @@ import { syncMembers } from "./lib/members.mjs";
 import { loadConfig } from "./lib/config.mjs";
 import { mutationSize, decideNursery, probRegress, NURSERY_DEFAULTS } from "./lib/select.mjs";
 import { gate } from "./lib/gates.mjs";
-import { mutationPrompt, repairPrompt, auditPrompt, auditFixPrompt, curatorPrompt, ideationPrompt } from "./lib/prompts.mjs";
+import { mutationPrompt, repairPrompt, auditPrompt, auditFixPrompt, curatorPrompt } from "./lib/prompts.mjs";
 import { loadPersonas, runSims, simStatsFor, simDigest, qualityFor, pairStatsFor, moneyStatsFor } from "./lib/sims.mjs";
 import { pickRevivals, isRevivable } from "./lib/seeds.mjs";
 import { ensureLabels, listIssues, backlogText, applyCuration, createIssue, comment, closeIssue, parseImplements, addLabel, betterPedigree } from "./lib/issues.mjs";
@@ -569,7 +569,8 @@ async function cycle(sp) {
     // Mostly breed from the champion; sometimes from a promising challenger, for diversity.
     const challengers = arms.filter((a) => (a.status === "live" || a.status === "nursery") && a.origin);
     const parent = !revival && challengers.length && Math.random() < 0.25 ? challengers[Math.floor(Math.random() * challengers.length)] : champion;
-    jobs.push({ parent, revival });
+    // Some slots explore: they skip the agreed backlog and try an agent-found idea (ideation loop) or their own.
+    jobs.push({ parent, revival, explore: !revival && Math.random() < (cfg.ideas?.slotShare ?? 0.25) });
   }
   const siblings = arms.filter((a) => a.status === "live" || a.status === "nursery");
   let rateLimited = false;
@@ -577,7 +578,7 @@ async function cycle(sp) {
   await Promise.all(
     Array.from({ length: Math.min(cfg.spawnConcurrency ?? 2, jobs.length) }, async () => {
       while (spawnQueue.length && !rateLimited) {
-        const { parent, revival, resume, crossover, tournament } = spawnQueue.shift();
+        const { parent, revival, resume, crossover, tournament, explore } = spawnQueue.shift();
         try {
           if (usePRs) {
             const stg = species.stages[Math.min(st.stage, species.stages.length - 1)];
@@ -586,7 +587,7 @@ async function cycle(sp) {
               species, brief, stage: stg.name, stageEvent: stg.describe ?? `trigger "${stg.event}"`,
               lineage: lineageText(lineageRows), siblings: siblings.map((x) => `- ${x.arm_id}: ${(x.hypothesis ?? "").slice(0, 200)}`).join("\n"),
               insights: await insights(sp.id), protectedFiles: species.protected ?? [], backlog: backlogText(issues),
-              simFeedback: await simDigest(db, sp.id, parent.arm_id), revival,
+              simFeedback: await simDigest(db, sp.id, parent.arm_id), revival, explore,
             };
             await pipe.spawnPR(sp, repo, species, brief, st, parent, siblings, { revival, promptCtx, crossover: crossover ?? resume?.crossover ?? null, tournament }, resume ?? null);
           } else await spawnOne(sp, repo, species, brief, st, parent, siblings, { backlog: backlogText(issues), revival });
@@ -784,7 +785,7 @@ async function cycle(sp) {
       if (j?.actions?.length) await applyCuration(repoSlug, j.actions, cfg.backlog?.maxNewPerCycle ?? 3);
     }
   }
-  if (!DRY) await ideate(sp, species, brief, repoSlug, issues, champion).catch((e) => log(`[${sp.id}] ideation failed: ${e.message}`));
+  // Ideation now runs as its own loop (evolve/ideas.mjs, ideas workflow).
 
   // LESSONS.md: distil this cycle's rejections and simulated users' problems for future mutants.
   if (!DRY) {
@@ -891,20 +892,6 @@ async function recentSimReports(spId, since) {
 async function curate(product, issues, feedback) {
   const dir = path.join(cfg.workdir, ".tmp");
   return extractJson(await codexText(curatorPrompt({ product, issues, feedback }), "curator"));
-}
-
-/** Once a day: an ideation agent with web search proposes up to two backlog items. */
-async function ideate(sp, species, brief, repoSlug, issues, champion) {
-  const recent = await db.first("SELECT id FROM journal WHERE species=? AND kind='ideation' AND ts>?", [sp.id, now() - 20 * 3600_000]);
-  if (recent) return;
-  const pages = (await Promise.all((sp.screenPages ?? ["/"]).map((p) => fetchText(champion.origin, p)))).join("\n");
-  const probes = (await db.all("SELECT detail FROM journal WHERE species=? AND kind='probe' ORDER BY ts DESC LIMIT 4", [sp.id])).map((p) => p.detail).join("\n");
-  const dir = path.join(cfg.workdir, ".tmp");
-  const r = await run("claude", ["-p", ideationPrompt({ product: species.brand.name, brief, pages, issues, probes }), "--model", cfg.models.ideate ?? "sonnet", "--allowedTools", "WebSearch,WebFetch", "--output-format", "text"], { cwd: dir, timeoutMs: 10 * 60_000, agent: true, echoPrefix: `[${sp.id} ideation]` });
-  const j = extractJson(r.out);
-  const ideas = (j?.ideas ?? []).slice(0, 2);
-  for (const idea of ideas) await createIssue(repoSlug, { title: idea.title, body: `${idea.body}\n\n_Proposed by the Darwinian ideation agent._`, label: "from:ideation" }).catch((e) => log(`ideation issue failed: ${e.message}`));
-  await journal(sp.id, "ideation", null, ideas.length ? `proposed: ${ideas.map((i) => i.title).join(" | ")}` : "no new ideas");
 }
 
 /** Keep paying members' Pro live in the species' own database (see lib/members.mjs). Runs on every engine run. */

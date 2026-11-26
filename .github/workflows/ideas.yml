@@ -1,0 +1,39 @@
+name: ideas
+# Ideation loop, three times a day (dispatched by the router clock): research the web and file ideas into each
+# species backlog as from:ideation. See evolve/ideas.mjs.
+on:
+  workflow_dispatch:
+    inputs:
+      species: { description: "Only this species (qr, resume, wall)", required: false }
+      per_run: { description: "Ideas per species", required: false }
+concurrency: { group: ideas, cancel-in-progress: false }
+permissions: { contents: write }
+jobs:
+  ideas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      DW_GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+      DW_LAB_KEY: ${{ secrets.DW_LAB_KEY }}
+      GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: scripts/ci-setup.sh
+      - name: Ideation loop
+        run: node evolve/ideas.mjs ${{ inputs.species && format('--species {0}', inputs.species) || '' }} ${{ inputs.per_run && format('--per-run {0}', inputs.per_run) || '' }}
+      - if: always()
+        run: scripts/ci-finish.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-transcripts-${{ github.run_id }}
+          path: ${{ env.DW_WORKDIR }}/.tmp/transcripts/
+          if-no-files-found: ignore
+          retention-days: 30
