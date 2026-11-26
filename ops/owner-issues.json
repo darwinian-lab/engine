@@ -7,13 +7,13 @@
   {
     "species": "wall",
     "title": "Pro: own colours and font on the widget",
-    "body": "Owner request, TOP PRIORITY for this week: the product must be able to make its first sale. Kudospage Pro ($29 once, `pro_lifetime`) already removes the badge: walls with `pro = 1` (applied when a buyer opens the manage page). Next Pro feature, included at no extra cost: on Pro walls the owner can pick an accent colour and font for the widget and public wall (stored per wall, new additive migration), with a live preview on the manage page. Free walls keep working exactly as today. Tests with `x-test-paid: pro_lifetime`.",
+    "body": "Owner request, TOP PRIORITY for this week: the product must be able to make its first sale. Kudospage Pro (a membership: `pro_monthly` $5/month or `pro_yearly` $48/year) already removes the badge: walls whose store row has `member = 1` (see BRIEF.md; earlier one-time buyers have `pro = 1`) (applied when a buyer opens the manage page). Next Pro feature, included at no extra cost: on Pro walls the owner can pick an accent colour and font for the widget and public wall (stored per wall, new additive migration), with a live preview on the manage page. Free walls keep working exactly as today. Tests with `x-test-paid: pro_monthly` (and `x-dw-visitor`).",
     "source": "discussion"
   },
   {
     "species": "wall",
     "title": "Offer Pro at the moment it is useful (honestly)",
-    "body": "Owner request, TOP PRIORITY for this week: the product must be able to make its first sale. People only think about the badge once they see their widget on their own site. On the manage page next to the embed code, and on the public wall preview, add one calm, dismissible line: 'Want it without the Kudospage badge and in your colours? Pro is $29 once, no subscription.' linking to /pricing (or opening checkout directly). No pop-ups, no countdowns, no nagging after it's dismissed. Measure with dw.track.",
+    "body": "Owner request, TOP PRIORITY for this week: the product must be able to make its first sale. People only think about the badge once they see their widget on their own site. On the manage page next to the embed code, and on the public wall preview, add one calm, dismissible line: 'Want it without the Kudospage badge and in your colours? Pro is $5 per month (or $48 per year), no subscription.' linking to /pricing (or opening checkout directly). No pop-ups, no countdowns, no nagging after it's dismissed. Measure with dw.track.",
     "source": "discussion"
   },
   {
@@ -55,7 +55,7 @@
   {
     "species": "wall",
     "title": "Honest comparison pages: Kudospage vs Senja, Testimonial.to, Famewall",
-    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. Build /senja-alternative, /testimonial-to-alternative, /famewall-alternative and a hub /compare. Each page: first lines answer 'what is a cheaper/free alternative to X' with concrete facts; a dated table of what each plan costs over 1 and 3 years next to Kudospage (free forever, Pro $29 once); an honest 'when X is the better choice' section (e.g. video testimonials, integrations we don't have); a clear start button. Also /best-testimonial-tools: a fair roundup of 6-8 real tools including ours with who each is best for (we may list ours first, labelled as ours). Facts about other products (prices, limits, what is free) must be checked on their own public pages with web search at build time, stated with the date checked, linked to the source, and neutral in tone: no 'scam', no claims we cannot back up (CHARTER law 6). Say plainly that the page is written by the makers of our product. Add the page to the sitemap and link it from the footer or a hub page.",
+    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. Build /senja-alternative, /testimonial-to-alternative, /famewall-alternative and a hub /compare. Each page: first lines answer 'what is a cheaper/free alternative to X' with concrete facts; a dated table of what each plan costs over 1 and 3 years next to Kudospage (free forever, Pro $5 per month (or $48 per year)); an honest 'when X is the better choice' section (e.g. video testimonials, integrations we don't have); a clear start button. Also /best-testimonial-tools: a fair roundup of 6-8 real tools including ours with who each is best for (we may list ours first, labelled as ours). Facts about other products (prices, limits, what is free) must be checked on their own public pages with web search at build time, stated with the date checked, linked to the source, and neutral in tone: no 'scam', no claims we cannot back up (CHARTER law 6). Say plainly that the page is written by the makers of our product. Add the page to the sitemap and link it from the footer or a hub page.",
     "source": "discussion"
   },
   {

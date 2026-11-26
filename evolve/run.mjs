@@ -8,7 +8,8 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
-import { d1 } from "./lib/d1.mjs";
+import { d1, d1ByName } from "./lib/d1.mjs";
+import { syncMembers } from "./lib/members.mjs";
 import { loadConfig } from "./lib/config.mjs";
 import { mutationSize, decideNursery, probRegress, NURSERY_DEFAULTS } from "./lib/select.mjs";
 import { gate } from "./lib/gates.mjs";
@@ -834,6 +835,20 @@ async function ideate(sp, species, brief, repoSlug, issues, champion) {
   await journal(sp.id, "ideation", null, ideas.length ? `proposed: ${ideas.map((i) => i.title).join(" | ")}` : "no new ideas");
 }
 
+/** Keep paying members' Pro live in the species' own database (see lib/members.mjs). Runs on every engine run. */
+async function refreshMembers(sp) {
+  if (DRY) return;
+  try {
+    const row = await db.first("SELECT json FROM species_config WHERE species = ?", [sp.id]);
+    const speciesConfig = row ? JSON.parse(row.json) : null;
+    const n = await syncMembers({ engineDb: db, speciesDb: await d1ByName(cfg, `sp-${sp.id}`), speciesId: sp.id, speciesConfig });
+    if (n) log(`[${sp.id}] members refreshed: ${n}`);
+  } catch (e) {
+    log(`[${sp.id}] members refresh failed: ${e.message}`);
+    await journal(sp.id, "note", null, `members refresh failed: ${String(e.message).slice(0, 500)}`).catch(() => {});
+  }
+}
+
 /**
  * Hotfix lane (--redeploy-champion): ship what is on a species' main right now as the current champion, without
  * waiting for the next merge. For owner/engine changes committed straight to main (e.g. what a payment provider's
@@ -884,6 +899,7 @@ try {
   }
   await ensureSchema();
   const only = argv("--species");
+  for (const sp of cfg.species.filter((s) => !only || s.id === only)) await refreshMembers(sp);
   if (args.includes("--redeploy-champion")) {
     for (const sp of cfg.species.filter((s) => !only || s.id === only)) {
       await redeployChampion(sp).catch(async (e) => {
