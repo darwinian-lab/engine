@@ -222,6 +222,10 @@ video { width: 100%; max-width: 360px; display: block; border-radius: 12px; bord
 .cause { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--rule-2); font-size: 14px; }
 .loading { padding: 80px 0; color: var(--ink-3); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  svg.tree [data-own] { transition: opacity .15s ease; }
+  svg.tree.dim [data-own] { opacity: .12; }
+  svg.tree.dim [data-own].lit { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { svg.tree [data-own] { transition: none; } }
 </style>
 </head>
 <body>
@@ -471,7 +475,7 @@ function drawTree() {
     const xc = x(a.created_at), yp = y(a.parent), yc = y(a.arm_id);
     const r = Math.min(10, Math.abs(yc - yp) / 2);
     const dir = yc > yp ? 1 : -1;
-    g += `<path d="M${xc},${yp} L${xc},${yc - dir * r} Q${xc},${yc} ${xc + r},${yc}" fill="none" stroke="${st(a.status).color}" stroke-opacity=".55" stroke-width="1.6" pointer-events="none"/>`;
+    g += `<path data-own="${esc(a.arm_id)}" d="M${xc},${yp} L${xc},${yc - dir * r} Q${xc},${yc} ${xc + r},${yc}" fill="none" stroke="${st(a.status).color}" stroke-opacity=".55" stroke-width="1.6" pointer-events="none"/>`;
   }
   // lifelines
   const promotions = D.journal.filter((j) => j.kind === "promote");
@@ -482,21 +486,29 @@ function drawTree() {
     const w = 2.2 + 5 * (tr / maxTrials);
     const ended = ["retired", "dead"].includes(a.status);
     const dash = a.status === "control" ? 'stroke-dasharray="6 5"' : a.status === "nursery" ? 'stroke-dasharray="1.5 4"' : "";
-    g += `<line x1="${x1}" x2="${x2}" y1="${yy}" y2="${yy}" stroke="${c}" stroke-width="${(a.status === "nursery" ? Math.max(2.6, w) : w).toFixed(1)}" stroke-linecap="round" ${dash} ${ended ? 'stroke-opacity=".7"' : ""} pointer-events="none"/>`;
+    g += `<line data-own="${esc(a.arm_id)}" x1="${x1}" x2="${x2}" y1="${yy}" y2="${yy}" stroke="${c}" stroke-width="${(a.status === "nursery" ? Math.max(2.6, w) : w).toFixed(1)}" stroke-linecap="round" ${dash} ${ended ? 'stroke-opacity=".7"' : ""} pointer-events="none"/>`;
     if (a.revived_from && lane[a.revived_from] != null) {
       const src = armById(a.revived_from);
       const sx = x(src.retired_at || src.created_at), sy = y(src.arm_id);
       const mx = (sx + x1) / 2;
-      g += `<path d="M${sx},${sy} C${mx},${sy} ${mx},${yy} ${x1},${yy}" fill="none" stroke="var(--ink-3)" stroke-width="1.4" stroke-dasharray="4 4" pointer-events="none"/>`;
+      g += `<path data-own="${esc(a.arm_id)}" d="M${sx},${sy} C${mx},${sy} ${mx},${yy} ${x1},${yy}" fill="none" stroke="var(--ink-3)" stroke-width="1.4" stroke-dasharray="4 4" pointer-events="none"/>`;
     }
-    g += `<circle cx="${x1}" cy="${yy}" r="3.4" fill="var(--panel)" stroke="${c}" stroke-width="1.8" pointer-events="none"/>`;
-    for (const p of promotions.filter((p) => p.arm_id === a.arm_id)) g += `<g pointer-events="none">${marker("champion", x(p.ts), yy, 4)}</g>`;
-    g += `<g pointer-events="none">${marker(a.status, x2, yy, 5.5)}</g>`;
+    // a crossover's second parent: a dashed link from that parent's lane
+    const second = (a.crossed_from || "").split(",").find((id) => id && id !== a.parent && lane[id] != null);
+    if (second) {
+      const src = armById(second);
+      const sx = Math.min(x(src.retired_at || D.now), x1), sy = y(src.arm_id);
+      const mx = (sx + x1) / 2;
+      g += `<path data-own="${esc(a.arm_id)}" d="M${sx},${sy} C${mx},${sy} ${mx},${yy} ${x1},${yy}" fill="none" stroke="${c}" stroke-opacity=".6" stroke-width="1.4" stroke-dasharray="2 3" pointer-events="none"/>`;
+    }
+    g += `<circle data-own="${esc(a.arm_id)}" cx="${x1}" cy="${yy}" r="3.4" fill="var(--panel)" stroke="${c}" stroke-width="1.8" pointer-events="none"/>`;
+    for (const p of promotions.filter((p) => p.arm_id === a.arm_id)) g += `<g data-own="${esc(a.arm_id)}" pointer-events="none">${marker("champion", x(p.ts), yy, 4)}</g>`;
+    g += `<g data-own="${esc(a.arm_id)}" pointer-events="none">${marker(a.status, x2, yy, 5.5)}</g>`;
     // label: id + title, kept inside the chart
     const room = Math.floor((W - R - x1) / 6.6) - a.arm_id.length - 2; // characters that fit before the right edge
     const anchorEnd = room < 18;
     const label = `<tspan font-family="var(--mono)" font-size="11.5" fill="var(--ink)" font-weight="500">${esc(a.arm_id)}</tspan><tspan dx="8" fill="var(--ink-2)" font-size="12.5">${esc(truncate(titleOf(a), anchorEnd ? 60 : Math.min(80, room)))}</tspan>`;
-    g += `<text x="${anchorEnd ? x2 - 2 : x1 + 2}" y="${yy - 9}" text-anchor="${anchorEnd ? "end" : "start"}" pointer-events="none">${label}</text>`;
+    g += `<text data-own="${esc(a.arm_id)}" x="${anchorEnd ? x2 - 2 : x1 + 2}" y="${yy - 9}" text-anchor="${anchorEnd ? "end" : "start"}" pointer-events="none">${label}</text>`;
   }
   // stillborn children hang under their parent's line
   const still = arms.filter((a) => a.status === "stillborn");
@@ -505,13 +517,35 @@ function drawTree() {
     const p = a.parent && ids.has(a.parent) ? a.parent : order[0].arm_id;
     const k = (perParent[p] = (perParent[p] || 0) + 1);
     const xx = x(a.created_at), yy = y(p) + 11 + ((k - 1) % 2) * 0;
-    g += `<g class="stillborn-hit" data-arm="${esc(a.arm_id)}"><line x1="${xx}" x2="${xx}" y1="${y(p) + 3}" y2="${yy - 3}" stroke="var(--st-stillborn)" stroke-opacity=".5" stroke-width="1.2"/>${marker("stillborn", xx, yy, 4)}<rect x="${xx - 8}" y="${yy - 8}" width="16" height="16" fill="transparent"/></g>`;
+    g += `<g class="stillborn-hit" data-arm="${esc(a.arm_id)}" data-own="${esc(a.arm_id)}"><line x1="${xx}" x2="${xx}" y1="${y(p) + 3}" y2="${yy - 3}" stroke="var(--st-stillborn)" stroke-opacity=".5" stroke-width="1.2"/>${marker("stillborn", xx, yy, 4)}<rect x="${xx - 8}" y="${yy - 8}" width="16" height="16" fill="transparent"/></g>`;
   }
   box.innerHTML = `<svg class="tree" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Family tree of mutants over time">${g}</svg>`;
+  // Hover: light up the mutant's whole lineage (ancestors through parents, revivals, finalists and crossovers, and
+  // all descendants); everything else fades.
+  const svg = box.querySelector("svg.tree");
+  const parentsOf = (a) => [a.parent, a.revived_from, a.finalist_of, ...(a.crossed_from || "").split(",")].filter(Boolean);
+  const offspring = {};
+  for (const a of arms) for (const p of parentsOf(a)) (offspring[p] ??= []).push(a.arm_id);
+  const lineage = (id) => {
+    const set = new Set([id]);
+    const up = [id];
+    while (up.length) { const a = armById(up.pop()); for (const p of a ? parentsOf(a) : []) if (!set.has(p)) { set.add(p); up.push(p); } }
+    const down = [id];
+    while (down.length) for (const k of offspring[down.pop()] || []) if (!set.has(k)) { set.add(k); down.push(k); }
+    return set;
+  };
+  const owned = [...svg.querySelectorAll("[data-own]")];
+  const light = (id) => {
+    const set = lineage(id);
+    svg.classList.add("dim");
+    for (const n of owned) n.classList.toggle("lit", set.has(n.dataset.own));
+  };
+  const unlight = () => { svg.classList.remove("dim"); for (const n of owned) n.classList.remove("lit"); };
   box.querySelectorAll("[data-arm]").forEach((n) => {
     const a = armById(n.dataset.arm);
+    n.addEventListener("mouseenter", () => light(a.arm_id));
     n.addEventListener("mousemove", (e) => showTip(e, armTip(a)));
-    n.addEventListener("mouseleave", hideTip);
+    n.addEventListener("mouseleave", () => { hideTip(); unlight(); });
     n.addEventListener("click", () => { hideTip(); openArm(a.arm_id); });
   });
   // start scrolled to "now"
