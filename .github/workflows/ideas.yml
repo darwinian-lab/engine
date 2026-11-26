@@ -6,6 +6,8 @@ on:
     inputs:
       species: { description: "Only this species (qr, resume, wall)", required: false }
       per_run: { description: "Ideas per species", required: false }
+      illustrate: { description: "Mockups for this many existing issues per species", required: false }
+      illustrate_only: { description: "Only add mockups (no new ideas): yes", required: false }
 concurrency: { group: ideas, cancel-in-progress: false }
 permissions: { contents: write }
 jobs:
@@ -27,7 +29,7 @@ jobs:
       - run: npm ci
       - run: scripts/ci-setup.sh
       - name: Ideation loop
-        run: node evolve/ideas.mjs ${{ inputs.species && format('--species {0}', inputs.species) || '' }} ${{ inputs.per_run && format('--per-run {0}', inputs.per_run) || '' }}
+        run: node evolve/ideas.mjs ${{ inputs.species && format('--species {0}', inputs.species) || '' }} ${{ inputs.per_run && format('--per-run {0}', inputs.per_run) || '' }} ${{ inputs.illustrate && format('--illustrate {0}', inputs.illustrate) || '' }} ${{ inputs.illustrate_only == 'yes' && '--illustrate-only' || '' }}
       - if: always()
         run: scripts/ci-finish.sh
       - if: always()

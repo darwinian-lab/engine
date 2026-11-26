@@ -199,6 +199,14 @@ section.panel .sub { font-size: 13.5px; color: var(--ink-2); margin: 2px 0 14px;
 .cmp-bar { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--st-champion); pointer-events: none; }
 .cmp-labels { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--ink-2); margin: 6px 2px 0; }
 input[type=range].cmp-range { width: 100%; margin: 8px 0 0; accent-color: var(--st-champion); }
+.change { margin: 0 0 18px; }
+.change-t { font-size: 14px; margin: 0 0 6px; }
+.ba-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+.ba { margin: 0; }
+.ba figcaption { font-size: 12.5px; color: var(--ink-2); margin: 0 0 4px; }
+.ba img { width: 100%; display: block; border: 1px solid var(--rule); border-radius: 8px; }
+.ba.mobile img { max-width: 220px; }
+video.desktop { max-width: 100%; }
 video { width: 100%; max-width: 360px; display: block; border-radius: 12px; border: 1px solid var(--rule); background: #000; }
 .votes { display: grid; gap: 10px; }
 .vote { border: 1px solid var(--rule-2); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
@@ -847,11 +855,34 @@ function drawGrowth() {
 }
 
 // ---------- specimens ----------
-function shotsOf(id) { return D.media.filter((m) => m.arm_id === id && m.kind === "shot"); }
-const mediaUrl = (m) => "/_dw/lab/media/" + m.id;
+// Key-page photos (role "key"; older rows have no role). Demo shots (before/after) and flow videos are separate.
+function shotsOf(id) { return D.media.filter((m) => m.arm_id === id && m.kind === "shot" && (!m.role || m.role === "key")); }
+const demoOf = (id) => D.media.filter((m) => m.arm_id === id && (m.role === "before" || m.role === "after"));
+const mediaUrl = (m) => m.url || "/_dw/lab/media/" + m.id;
 function heroShot(id) {
+  const after = demoOf(id).find((m) => m.role === "after" && m.viewport === "desktop");
+  if (after) return after; // the card shows what this mutant changed, not its unchanged home page
   const s = shotsOf(id);
   return s.find((m) => m.page === "/" && m.viewport === "desktop") || s.find((m) => m.viewport === "desktop") || s[0];
+}
+function drawChanges(a, parent) {
+  const shots = demoOf(a.arm_id);
+  const flow = D.media.find((m) => m.arm_id === a.arm_id && m.kind === "video" && m.role === "flow-after");
+  const flowBefore = D.media.find((m) => m.arm_id === a.arm_id && m.kind === "video" && m.role === "flow-before");
+  const errs = (a.demo && a.demo.errors) || [];
+  if (!shots.length && !flow) return a.status === "stillborn" ? "" : `<h3>What changed</h3><p class="empty">${a.prs && a.prs.length ? "No demo recorded yet: the engine records one (before/after shots and a flow video) at the next cycle." : "No demo: this mutant predates demos."}</p>`;
+  const names = [...new Set(shots.map((m) => m.name))];
+  const pair = (n) => {
+    const b = shots.find((m) => m.name === n && m.role === "before"), af = shots.find((m) => m.name === n && m.role === "after");
+    const one = af || b;
+    const cell = (m, label) => `<figure class="ba ${m ? m.viewport : ""}"><figcaption>${label}</figcaption>${m ? `<a href="${mediaUrl(m)}" target="_blank" rel="noopener"><img loading="lazy" src="${mediaUrl(m)}" alt="${esc(label + ": " + n)}"></a>${m.note ? `<div class="faint" style="font-size:12.5px">${esc(m.note)}</div>` : ""}` : `<div class="nophoto">Not captured</div>`}</figure>`;
+    return `<div class="change"><div class="change-t"><b>${esc(n)}</b>${one && one.caption ? ` <span class="muted">${esc(one.caption)}</span>` : ""} <span class="faint mono" style="font-size:12px">${esc((one && one.page) || "")}</span></div>
+      <div class="ba-row">${cell(b, parent ? `Before (${parent.arm_id})` : "Before")}${cell(af, "After (this mutant)")}</div></div>`;
+  };
+  return `<h3>What changed</h3><p class="sub muted" style="font-size:13.5px;margin:-4px 0 10px">The same steps on the parent and on this mutant. Red boxes mark what changed.</p>
+    ${names.map(pair).join("")}
+    ${flow ? `<h3>The flow it is about${flow.name ? `: ${esc(flow.name)}` : ""}</h3><video src="${mediaUrl(flow)}" class="${flow.viewport}" controls muted playsinline preload="metadata"></video>${flow.caption ? `<div class="faint" style="font-size:12.5px">${esc(flow.caption)}</div>` : ""}${flowBefore ? `<p style="font-size:13.5px"><a href="${mediaUrl(flowBefore)}" target="_blank" rel="noopener">Same steps on the parent</a></p>` : ""}` : ""}
+    ${errs.length ? `<details style="margin-top:8px"><summary class="muted" style="font-size:13px">Demo problems (${errs.length})</summary><ul class="note-list">${errs.map((e) => `<li>${esc(e)}</li>`).join("")}</ul></details>` : ""}`;
 }
 function drawSpecimens() {
   const arms = D.arms.slice().sort((a, b) => b.created_at - a.created_at);
@@ -923,7 +954,6 @@ function openArm(id, quiet) {
   const children = D.arms.filter((c) => c.parent === a.arm_id);
   const pages = [...new Set(shotsOf(id).map((m) => m.page))];
   if (!pages.includes(viewer.page)) viewer.page = pages[0] || "/";
-  const video = D.media.find((m) => m.arm_id === id && m.kind === "video");
   const alive = ["live", "champion", "control", "nursery", "guard"].includes(a.status);
   const spInfo = D.species.find((x) => x.id === SP) || {};
   const visit = spInfo.domain ? `https://${spInfo.domain}/_dw/lab/visit?arm=${encodeURIComponent(id)}&t=${D.handoff}` : null;
@@ -956,9 +986,9 @@ function openArm(id, quiet) {
       </div>
       ${alive && visit ? `<p class="faint" style="font-size:12.5px;margin:8px 0 0">Browsing as a mutant sticks to it on that domain. <a href="https://${esc(spInfo.domain)}/_dw/lab/visit?arm=&t=${D.handoff}" target="_blank" rel="noopener">Stop previewing</a> to get a normal assignment back. Your visits are never counted.</p>` : ""}
 
-      <h3>What it looks like</h3>
+      ${drawChanges(a, parent)}
+      <h3>Key pages</h3>
       <div id="viewer"></div>
-      ${video ? `<h3>Scrolling through it on a phone</h3><video src="${mediaUrl(video)}" controls muted playsinline loop preload="metadata"></video>` : ""}
 
       ${a.finalist_of ? `<div class="cause">Finalist: <button type="button" data-arm="${esc(a.finalist_of)}" class="mono" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px">${esc(a.finalist_of)}</button> won selection after main had moved on, so its change was rebased onto main. It must confirm itself here before it is merged.</div>` : ""}
       ${a.tournament ? `<div class="cause">Tournament ${esc(a.tournament)}: one idea built several ways, compared head to head; only the best variant carries on.${a.variant ? ` This variant's direction: ${esc(a.variant)}` : ""}</div>` : ""}

@@ -36,7 +36,7 @@ field "variants": an array of exactly ${n} strings, each a clearly different DIR
 teams will build one each; simulated people compare them side by side and only the best survives.`;
 
 export function makePipeline(d) {
-  const { cfg, db, journal, ghNotice, DRY, codex, deployArm, deleteWorker, photograph, stillborn, numstat, gitLock, RateLimited, now, cfEnv } = d;
+  const { cfg, db, journal, ghNotice, DRY, codex, deployArm, deleteWorker, photograph, showcase, stillborn, numstat, gitLock, RateLimited, now, cfEnv } = d;
   const gh = (args, opts = {}) => run("gh", args, { timeoutMs: 120_000, ...opts });
 
 
@@ -83,11 +83,14 @@ You are building one mutant in a Darwinian software experiment. There is no huma
 2. Implement the work item below completely: plan it in phases, build each phase, test it, and look at the result in
    your browser (start the dev server as CLAUDE.md describes) on desktop and mobile widths before moving on.
 3. Add or update tests. Run npm test, npm run typecheck and npm run e2e, and fix everything until they pass.
-4. Do not commit and do not touch git history; the engine commits your work. Do not push.${resumed ? "\n5. An earlier attempt was interrupted: inspect `git status` / `git diff` and continue from the existing work." : ""}
+4. Do not commit and do not touch git history; the engine commits your work. Do not push.
+5. Last, write \`.dw/demo.json\` as described below and check its selectors in your browser against the running site.${resumed ? "\n6. An earlier attempt was interrupted: inspect `git status` / `git diff` and continue from the existing work." : ""}
 
 Finish with a short plain summary of what you built (what a user will see, and anything left out).
 
-${workItem}`);
+${workItem}
+
+${fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "skills", "evolve-to-prs", "methods", "demo.md"), "utf8")}`);
     const out = path.join(wt, ".dw", "codex-build-out.txt");
     const s = cfg.sims ?? {};
     const profile = path.join(cfg.workdir, ".tmp", "agent-browser", rid(8));
@@ -104,7 +107,9 @@ ${workItem}`);
     if (limitHit({ ...r, out: text })) throw new RateLimited(text.slice(-500));
     await run("git", ["add", "-A"], { cwd: wt });
     if ((await run("git", ["diff", "--cached", "--quiet"], { cwd: wt })).code !== 0) await must("git", [...GIT_ID, "commit", "-q", "-m", `${title}\n\nBuilt by Codex for mutant ${armId}.`], { cwd: wt });
-    fs.writeFileSync(resultFile, JSON.stringify({ branch, title, summary: text.trim().slice(0, 4000) || `Codex exited with code ${r.code}`, builder: "codex" }));
+    let demo = null;
+    try { demo = JSON.parse(fs.readFileSync(path.join(wt, ".dw", "demo.json"), "utf8")); } catch {}
+    fs.writeFileSync(resultFile, JSON.stringify({ branch, title, summary: text.trim().slice(0, 4000) || `Codex exited with code ${r.code}`, builder: "codex", demo }));
   }
 
   // Agents get a full shell (no secrets in their environment); pushing and network fetches stay blocked.
@@ -416,6 +421,9 @@ ${workItem}`);
         await new Promise((res) => setTimeout(res, 5000));
       }
       await photograph(sp, armId, origin);
+      // Before/after shots and the flow video, also posted on the PR.
+      const demoDiff = (await run("git", ["diff", baseSha, "HEAD", "--", ".", ":!package-lock.json"], { cwd: wt })).out;
+      await showcase?.(sp, armId, origin, parent, { demo: result.demo ?? null, workItem, diff: demoDiff, pr: topPr });
       const issueNo = hyp.implements_issue ?? parseImplements(workItem);
       await db.run(
         // Upsert: a resumed mutant may already have a row from an earlier, interrupted attempt.

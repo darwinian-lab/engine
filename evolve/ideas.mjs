@@ -7,14 +7,15 @@
 // Each run takes the next research angle per species (rotating), so the whole space gets covered over a few days.
 // The open ideation backlog is capped: the oldest untouched ideas are closed to make room.
 //
-//   node evolve/ideas.mjs [--species qr] [--per-run 4] [--angle competitors] [--dry-run]
+//   node evolve/ideas.mjs [--species qr] [--per-run 4] [--angle competitors] [--illustrate 3] [--illustrate-only] [--dry-run]
 import fs from "node:fs";
 import path from "node:path";
 import { d1 } from "./lib/d1.mjs";
 import { loadConfig } from "./lib/config.mjs";
 import { run, log, extractJson, limitHit } from "./lib/util.mjs";
 import { claudeStream } from "./lib/stream.mjs";
-import { ensureLabels, createIssue, closeIssue } from "./lib/issues.mjs";
+import { ensureLabels, createIssue, closeIssue, sourceOf, rankIssues } from "./lib/issues.mjs";
+import { mockupFor, illustrateIssue, siteHtml, VISUALS_MARK } from "./lib/illustrate.mjs";
 
 const args = process.argv.slice(2);
 const argv = (k) => {
@@ -24,8 +25,9 @@ const argv = (k) => {
 const cfg = loadConfig(args);
 const db = d1(cfg, cfg.cloudflare.d1Engine);
 const DRY = args.includes("--dry-run");
-const I = { perRun: 4, model: "sonnet", maxOpen: 30, ...(cfg.ideas ?? {}) };
+const I = { perRun: 4, model: "sonnet", maxOpen: 30, illustratePerRun: 3, ...(cfg.ideas ?? {}) };
 const PER_RUN = Number(argv("--per-run") ?? I.perRun);
+const ONLY_ILLUSTRATE = args.includes("--illustrate-only"); // add mockups to existing issues, no new ideas
 const now = () => Date.now();
 const ghEnv = { GH_TOKEN: process.env.DW_GH_TOKEN ?? process.env.GH_TOKEN ?? "" };
 
@@ -64,13 +66,13 @@ Answer with ONLY JSON:
 {"ideas":[{"title":"max 10 words","size":"small|medium|large|feature|redesign","body":"What to build (user-visible behaviour), why it should help, and the evidence with source URLs"}]}`;
 
 async function fetchText(domain, p) {
-  const r = await fetch(`https://${domain}${p}`).catch(() => null);
+  const r = await fetch(`https://${domain}${p}`, { headers: { "user-agent": "darwinian-engine-bot" } }).catch(() => null);
   if (!r?.ok) return "";
   return `### ${p}\n` + (await r.text()).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 3000);
 }
 
 async function issuesOf(repoSlug) {
-  const r = await run("gh", ["issue", "list", "-R", repoSlug, "--state", "all", "--limit", "500", "--json", "number,title,state,labels,createdAt,comments"], { env: ghEnv, timeoutMs: 120_000 });
+  const r = await run("gh", ["issue", "list", "-R", repoSlug, "--state", "all", "--limit", "500", "--json", "number,title,body,state,labels,createdAt,comments"], { env: ghEnv, timeoutMs: 120_000 });
   return JSON.parse(r.out || "[]");
 }
 
@@ -93,8 +95,8 @@ async function main() {
       log(`[${sp.id}] ideation: backlog unavailable: ${e.message}`);
       continue;
     }
-    const pages = (await Promise.all((sp.screenPages ?? ["/"]).map((p) => fetchText(sp.domain, p)))).join("\n");
-    const r = await claudeStream({
+    const pages = ONLY_ILLUSTRATE ? "" : (await Promise.all((sp.screenPages ?? ["/"]).map((p) => fetchText(sp.domain, p)))).join("\n");
+    const r = ONLY_ILLUSTRATE ? { out: "{}", err: "", code: 0 } : await claudeStream({
       args: ["-p", prompt({ product: species.brand?.name ?? sp.id, domain: sp.domain, brief, pages, titles: all.map((i) => `- ${i.title}`), angle, n: PER_RUN }), "--model", I.model, "--allowedTools", "WebSearch,WebFetch"],
       cwd: path.join(cfg.workdir, ".tmp"),
       label: `${sp.id} ideation`,
@@ -112,7 +114,30 @@ async function main() {
     for (const idea of ideas) {
       const body = `${idea.body}\n\n**Suggested size:** ${idea.size ?? "medium"}\n\n_Found by the ideation loop (angle: ${angle}). Normal priority: it competes as a mutant and survives only if it wins._`;
       if (DRY) { log(`[${sp.id}] would file: ${idea.title}`); filed.push(idea.title); continue; }
-      await createIssue(repoSlug, { title: idea.title, body, label: "from:ideation" }).then(() => filed.push(idea.title)).catch((e) => log(`ideation issue failed: ${e.message}`));
+      const url = await createIssue(repoSlug, { title: idea.title, body, label: "from:ideation" }).catch((e) => (log(`ideation issue failed: ${e.message}`), null));
+      if (url) {
+        filed.push(idea.title);
+        all.push({ number: Number(String(url).split("/").pop()), title: idea.title, body, state: "OPEN", labels: [{ name: "from:ideation" }], createdAt: new Date().toISOString(), comments: [] });
+      }
+    }
+
+    // Pictures: a mockup of how it should look and where it goes today, for the newest ideas and (backfill) the
+    // most important open issues that have none yet.
+    if (!DRY) {
+      const html = await siteHtml(sp.domain, "/", cfg.routerKey);
+      const open = all.filter((i) => i.state === "OPEN" && !String(i.body ?? "").includes(VISUALS_MARK)).map((i) => ({ ...i, source: sourceOf((i.labels ?? []).map((l) => l.name)), votes: 1 }));
+      const fresh = open.filter((i) => filed.includes(i.title));
+      const backlog = rankIssues(open.filter((i) => !filed.includes(i.title))).slice(0, Number(argv("--illustrate") ?? I.illustratePerRun));
+      for (const issue of [...fresh, ...backlog]) {
+        try {
+          const mock = await mockupFor({ cfg, model: I.mockupModel ?? I.model, product: species.brand?.name ?? sp.id, domain: sp.domain, issue, html });
+          const ok = await illustrateIssue({ cfg, repoSlug, species: sp.id, domain: sp.domain, number: issue.number, mock });
+          log(`[${sp.id}] mockup for #${issue.number}: ${ok ? "added" : "skipped"}`);
+        } catch (e) {
+          log(`[${sp.id}] mockup for #${issue.number} failed: ${e.message}`);
+          if (/usage limit/.test(e.message)) break;
+        }
+      }
     }
 
     // Cap the open ideation backlog: close the oldest ideas nobody has engaged with.
@@ -123,7 +148,7 @@ async function main() {
 
     const detail = `${angle}: ${filed.length ? filed.join(" | ") : "no new ideas"}${stale.length ? ` (closed ${stale.length} stale)` : ""}`;
     log(`[${sp.id}] ideation ${detail}`);
-    if (!DRY) await db.run("INSERT INTO journal (ts, species, kind, arm_id, detail) VALUES (?,?,?,?,?)", [now(), sp.id, "ideation", null, detail.slice(0, 1500)]);
+    if (!DRY && !ONLY_ILLUSTRATE) await db.run("INSERT INTO journal (ts, species, kind, arm_id, detail) VALUES (?,?,?,?,?)", [now(), sp.id, "ideation", null, detail.slice(0, 1500)]);
   }
 }
 

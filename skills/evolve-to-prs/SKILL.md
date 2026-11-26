@@ -85,9 +85,13 @@ Write `<run folder>/result.json`:
   "phases": 2,
   "checks": "commands run and their final status",
   "open_findings": [],
-  "assumptions": ["..."]
+  "assumptions": ["..."],
+  "demo": { "shots": [], "flow": {} }
 }
 ```
+
+`demo` shows people what the change does: before/after screenshots and a recorded flow. Follow
+`methods/demo.md` exactly, and check its selectors against the running site in your browser before finishing.
 
 If the work turned out to be impossible or unsafe, still write result.json with `"head": null` and the reason in
 `summary`.

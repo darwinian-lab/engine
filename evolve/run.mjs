@@ -19,9 +19,9 @@ import { pickRevivals, isRevivable } from "./lib/seeds.mjs";
 import { ensureLabels, listIssues, backlogText, applyCuration, createIssue, comment, closeIssue, parseImplements, addLabel, betterPedigree } from "./lib/issues.mjs";
 import { ENGINE_DIR } from "./lib/config.mjs";
 import { makePipeline } from "./pipeline.mjs";
-import { closePR } from "./lib/ghpr.mjs";
+import { closePR, commentPR } from "./lib/ghpr.mjs";
 import { run, must, expand, rid, log, lock, extractJson, readJson, stripHtml, limitHit } from "./lib/util.mjs";
-import { capture, storeMedia } from "./lib/shots.mjs";
+import { capture, storeMedia, runDemo } from "./lib/shots.mjs";
 
 // In GitHub Actions, surface fatal errors as annotations (readable without opening the log).
 const annotate = (e) => {
@@ -161,6 +161,89 @@ async function photograph(sp, armId, origin) {
   }
 }
 
+const DEMO_GUIDE = fs.readFileSync(path.join(ENGINE_DIR, "skills", "evolve-to-prs", "methods", "demo.md"), "utf8");
+const validDemo = (d) => Boolean(d && typeof d === "object" && ((Array.isArray(d.shots) && d.shots.some((x) => x?.path)) || d.flow?.steps?.length));
+
+/** Codex writes (or fixes) a demo spec from the change itself. */
+async function draftDemo({ workItem, diff, html, previous }) {
+  const text = await codexText(`You write the demo for one change to a website, so people can see what it does.
+
+${DEMO_GUIDE}
+
+## The change
+${String(workItem ?? "").slice(0, 6000)}
+
+## Its diff
+${String(diff ?? "").slice(0, 60000)}
+
+## The deployed page's HTML (for exact selectors)
+${String(html ?? "").slice(0, 30000)}
+${previous ? `
+## Your previous demo failed when run
+${JSON.stringify(previous.spec)}
+
+Errors:
+${previous.errors.join("\n")}
+
+Fix the selectors or steps so every step works on the deployed page.` : ""}
+
+Answer with ONLY the demo JSON object.`, "demo");
+  return extractJson(text);
+}
+
+async function pageHtml(origin, p) {
+  const r = await fetch(origin + p, { headers: { "x-dw-key": cfg.routerKey, "x-dw-visitor": "evolve-shot" } }).catch(() => null);
+  return r?.ok ? (await r.text()).replace(/<script[\s\S]*?<\/script>/g, "<script>…</script>").replace(/<style[\s\S]*?<\/style>/g, "<style>…</style>") : "";
+}
+
+/** The PR comment with the visuals: before/after per shot and the flow as an inline GIF (mp4 linked). */
+function visualComment(items, spec, parentId, armId, errors) {
+  const byName = {};
+  for (const it of items) if (it.kind === "shot" && it.url) (byName[it.name] ??= {})[it.role] = it;
+  const w = (it) => (it.viewport === "mobile" ? 240 : 460);
+  const img = (it, alt) => (it ? `<img src="${it.url}" width="${w(it)}" alt="${alt}">${it.note ? `<br><sub>${it.note}</sub>` : ""}` : "<sub>(not captured)</sub>");
+  const shots = (spec?.shots ?? []).map((sh) => {
+    const p = byName[sh.name] ?? {};
+    return `**${sh.name}**${sh.caption ? `: ${sh.caption}` : ""} <sub>(${sh.viewport ?? "desktop"}, \`${sh.path ?? "/"}\`)</sub>\n\n| Before (\`${parentId}\`) | After (\`${armId}\`) |\n|---|---|\n| ${img(p.before, "before")} | ${img(p.after, "after")} |`;
+  });
+  const gif = items.find((i) => i.kind === "gif" && i.role === "flow-after" && i.url), mp4 = items.find((i) => i.kind === "video" && i.role === "flow-after" && i.url);
+  const gifB = items.find((i) => i.kind === "gif" && i.role === "flow-before" && i.url);
+  const flow = gif || mp4 ? `**Flow: ${spec?.flow?.name ?? "the main task"}**\n\n${gif ? `<img src="${gif.url}" width="${gif.viewport === "mobile" ? 280 : 640}" alt="flow">` : ""}\n\n${mp4 ? `[Watch as video](${mp4.url})` : ""}${gifB ? ` · [Same steps on the parent](${gifB.url})` : ""}` : "";
+  return [`### What this mutant looks like`, `Before = parent \`${parentId}\`, after = this mutant. Red boxes mark what changed.`, ...shots, flow, errors?.length ? `<details><summary>Demo problems (${errors.length})</summary>\n\n${errors.map((e) => `- ${e}`).join("\n")}\n</details>` : ""].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Show a deployed mutant the way a person sees it: run its demo (written by the builder, or drafted by Codex from
+ * the diff) on the mutant and on its parent, publish the annotated shots and the flow video, comment on the PR.
+ * Never fails the caller.
+ */
+async function showcase(sp, armId, origin, parent, { demo = null, workItem = "", diff = "", pr = null } = {}) {
+  if (DRY || !origin) return;
+  try {
+    const dir = path.join(cfg.workdir, ".tmp", "demo", `${sp.id}-${armId}`);
+    const firstPath = (d) => d?.shots?.[0]?.path ?? d?.flow?.path ?? "/";
+    let spec = validDemo(demo) ? demo : null;
+    if (!spec) spec = await draftDemo({ workItem, diff, html: await pageHtml(origin, "/") }).catch((e) => (log(`demo draft failed: ${e.message}`), null));
+    if (!validDemo(spec)) return log(`[${sp.id}] ${armId}: no usable demo`);
+    let after = await runDemo({ origin, routerKey: cfg.routerKey, demo: spec, outDir: path.join(dir, "a"), side: "after" });
+    if (after.errors.length) {
+      const fixed = await draftDemo({ workItem, diff, html: await pageHtml(origin, firstPath(spec)), previous: { spec, errors: after.errors } }).catch(() => null);
+      if (validDemo(fixed)) {
+        const again = await runDemo({ origin, routerKey: cfg.routerKey, demo: fixed, outDir: path.join(dir, "b"), side: "after" });
+        if (again.errors.length < after.errors.length) [spec, after] = [fixed, again];
+      }
+    }
+    const before = parent?.origin ? await runDemo({ origin: parent.origin, routerKey: cfg.routerKey, demo: spec, outDir: path.join(dir, "p"), side: "before" }) : { items: [] };
+    const stored = await storeMedia(db, sp.id, armId, [...before.items, ...after.items]);
+    await db.run("UPDATE arms SET demo=? WHERE species=? AND arm_id=?", [JSON.stringify({ spec, errors: after.errors }), sp.id, armId]);
+    if (pr?.number) await commentPR(`${cfg.github.org}/${sp.repo}`, pr.number, visualComment(stored, spec, parent?.arm_id ?? "parent", armId, after.errors)).catch((e) => log(`visual comment failed: ${e.message}`));
+    fs.rmSync(dir, { recursive: true, force: true });
+    log(`[${sp.id}] showcased ${armId}: ${stored.length} files${after.errors.length ? `, ${after.errors.length} demo problem(s)` : ""}`);
+  } catch (e) {
+    log(`[${sp.id}] showcase of ${armId} failed: ${e.message}`);
+  }
+}
+
 /** Mutants that never lived still belong in the fossil record (status 'stillborn'). */
 async function stillborn(sp, armId, parent, st, cause, extra = {}) {
   if (DRY) return;
@@ -187,6 +270,16 @@ async function backfill(sp, repo) {
   }
   const unshot = await db.all("SELECT arm_id, origin FROM arms WHERE species=? AND status IN ('live','champion','control','nursery') AND shot_at IS NULL AND origin != ''", [sp.id]);
   for (const a of unshot) await photograph(sp, a.arm_id, a.origin);
+  const undemoed = await db.all("SELECT * FROM arms WHERE species=? AND status IN ('live','nursery') AND demo IS NULL AND prs IS NOT NULL AND origin != '' ORDER BY created_at DESC LIMIT 2", [sp.id]);
+  for (const a of undemoed) {
+    const parent = await db.first("SELECT arm_id, origin FROM arms WHERE species=? AND arm_id=?", [sp.id, a.parent]);
+    const champ = await db.first("SELECT arm_id, origin FROM arms WHERE species=? AND status='champion'", [sp.id]);
+    const base = (await run("git", ["merge-base", "origin/main", a.git_ref], { cwd: repo })).out.trim();
+    const diff = base ? (await run("git", ["diff", base, a.git_ref, "--", ".", ":!package-lock.json"], { cwd: repo })).out : "";
+    let work = a.mutation ?? a.hypothesis;
+    const prs = JSON.parse(a.prs ?? "[]");
+    await showcase(sp, a.arm_id, a.origin, parent?.origin ? parent : champ, { workItem: work, diff, pr: prs.at(-1) });
+  }
 }
 
 async function fetchText(origin, p) {
@@ -942,7 +1035,7 @@ async function redeployChampion(sp) {
   await journal(sp.id, "note", champion.arm_id, `hotfix: champion ${champion.arm_id} redeployed from main ${sha}`);
 }
 
-const pipe = makePipeline({ cfg, db, journal, ghNotice, DRY, codex, codexText, deployArm, deleteWorker, photograph, stillborn, numstat, gitLock, RateLimited, now, cfEnv });
+const pipe = makePipeline({ cfg, db, journal, ghNotice, DRY, codex, codexText, deployArm, deleteWorker, photograph, showcase, stillborn, numstat, gitLock, RateLimited, now, cfEnv });
 
 const release = lock(path.join(cfg.workdir, ".tmp", "evolve.lock"));
 if (!release) {
