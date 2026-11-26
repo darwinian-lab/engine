@@ -347,6 +347,7 @@ function armTip(a) {
     ${D.quality && D.quality[a.arm_id] ? `<div class="t-row"><span>Experience score</span><b>${D.quality[a.arm_id].mean.toFixed(0)} / 100 (${D.quality[a.arm_id].n} sessions)</b></div>` : ""}
     ${D.pairs && D.pairs[a.arm_id] ? `<div class="t-row"><span>Side by side vs champion</span><b>${D.pairs[a.arm_id].wins} preferred, ${D.pairs[a.arm_id].losses} not, ${D.pairs[a.arm_id].ties} even</b></div>` : ""}
     ${a.revived_from ? `<div class="t-row"><span>Revival of</span><b class="mono">${esc(a.revived_from)}</b></div>` : ""}
+    ${a.tournament ? `<div class="t-row"><span>Tournament</span><b class="mono">${esc(a.tournament)}</b></div>` : ""}
     ${a.crossed_from ? `<div class="t-row"><span>Crossover of</span><b class="mono">${esc(a.crossed_from.replace(",", " × "))}</b></div>` : ""}
     ${D.pb[a.arm_id] != null ? `<div class="t-row"><span>Chance it's best</span><b>${pct(D.pb[a.arm_id])}</b></div>` : ""}
     ${a.cause ? `<div class="t-row"><span>Why it ended</span></div><div>${esc(a.cause.slice(0, 160))}</div>` : ""}`;
@@ -960,6 +961,7 @@ function openArm(id, quiet) {
       ${video ? `<h3>Scrolling through it on a phone</h3><video src="${mediaUrl(video)}" controls muted playsinline loop preload="metadata"></video>` : ""}
 
       ${a.finalist_of ? `<div class="cause">Finalist: <button type="button" data-arm="${esc(a.finalist_of)}" class="mono" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px">${esc(a.finalist_of)}</button> won selection after main had moved on, so its change was rebased onto main. It must confirm itself here before it is merged.</div>` : ""}
+      ${a.tournament ? `<div class="cause">Tournament ${esc(a.tournament)}: one idea built several ways, compared head to head; only the best variant carries on.${a.variant ? ` This variant's direction: ${esc(a.variant)}` : ""}</div>` : ""}
       ${a.crossed_from ? `<div class="cause">This is a crossover: ${a.crossed_from.split(",").map((id) => `<button type="button" data-arm="${esc(id)}" class="mono" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px">${esc(id)}</button>`).join(" × ")} each beat the champion on their own, so the engine combined them to test both together.</div>` : ""}
       ${a.revived_from ? `<div class="cause">This is a revival of <button type="button" data-arm="${esc(a.revived_from)}" class="mono" style="all:unset;cursor:pointer;text-decoration:underline;text-underline-offset:3px">${esc(a.revived_from)}</button>, an idea that died earlier and was brought back from the seed bank.</div>` : ""}
       ${a.issue ? `<p class="muted" style="font-size:14px">Implements backlog item <a href="https://github.com/${D.repo}/issues/${a.issue}" target="_blank" rel="noopener">#${a.issue}</a>.</p>` : ""}

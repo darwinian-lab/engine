@@ -323,9 +323,33 @@ export async function runSims({ cfg, db, sp, stageEvent, arms, personas, budget,
   const pairCounts = champ ? await pairStatsFor(db, sp.id, champ.arm_id) : {};
   const challengers = champ ? arms.filter((a) => a.status === "nursery" || a.status === "live").sort((x, y) => (pairCounts[x.arm_id]?.n ?? 0) - (pairCounts[y.arm_id]?.n ?? 0)) : [];
   const nPairs = champ ? Math.min(Math.floor((budget * (cfg.sims.pairShare ?? 0.3)) / 2), challengers.length + (guard ? 1 : 0)) : 0;
+  // Tournament variants are also compared with each other, so the best version of an idea is found quickly.
+  const groups = {};
+  for (const a of arms) if (a.tournament && (a.status === "nursery" || a.status === "live")) (groups[a.tournament] ??= []).push(a);
+  const h2h = [];
+  if (Object.keys(groups).length) {
+    const seen = {};
+    for (const r of await db.all("SELECT arm_a, arm_b FROM sim_pairs WHERE species=? AND ts>?", [sp.id, since]).catch(() => [])) {
+      const k = [r.arm_a, r.arm_b].sort().join("|");
+      seen[k] = (seen[k] ?? 0) + 1;
+    }
+    for (const ms of Object.values(groups))
+      for (let i = 0; i < ms.length; i++)
+        for (let j = i + 1; j < ms.length; j++) {
+          const n = seen[[ms[i].arm_id, ms[j].arm_id].sort().join("|")] ?? 0;
+          // Alternate which variant is shown first.
+          if (n < (cfg.tournaments?.maxPairs ?? 6)) h2h.push({ n, pair: n % 2 ? { challenger: ms[i], reference: ms[j] } : { challenger: ms[j], reference: ms[i] } });
+        }
+    h2h.sort((x, y) => x.n - y.n);
+  }
+  const nAll = Math.min(Math.floor((budget * (cfg.sims.pairShare ?? 0.3)) / 2) + Math.min(2, h2h.length), nPairs + h2h.length);
   const pairJobs = [];
   if (guard && nPairs) pairJobs.push({ pair: { challenger: champ, reference: guard } });
-  for (const c of challengers) if (pairJobs.length < nPairs) pairJobs.push({ pair: { challenger: c, reference: champ } });
+  const champQ = challengers.slice();
+  while (pairJobs.length < nAll && (h2h.length || champQ.length)) {
+    if (h2h.length) pairJobs.push({ pair: h2h.shift().pair });
+    if (champQ.length && pairJobs.length < nAll) { const c = champQ.shift(); pairJobs.push({ pair: { challenger: c, reference: champ } }); }
+  }
   const plan = allocate({ arms, simStats, budget: budget - 2 * pairJobs.length, minSims, combined });
   // Choose personas: for each arm, the persona it has met least (ties broken by list order),
   // so arms end up compared on the same people.

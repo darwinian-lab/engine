@@ -99,5 +99,113 @@
     "title": "Download your wall as a self-hosted page (no badge for Pro)",
     "source": "discussion",
     "body": "Agreed with the owner: our pricing promise says that if Kudospage ever closes, Pro owners get a copy of their wall they can host themselves without the badge. Build that now so the promise is real, and offer it as a feature: on the manage page, 'Download your wall' gives a single self-contained .html file (approved testimonials, the wall's styling, no external requests, no Kudospage script) that can be uploaded to any website or opened offline. Free walls include the small 'Made with Kudospage' link in the file; Pro walls don't. Keep it honest in the copy: the downloaded page is a snapshot and doesn't update itself; the live widget does. Test that the file has no external URLs except the optional attribution link, escapes testimonial text, and matches the approved set at download time."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "QR design studio: colours, shapes, logo and a 'Scan me' frame",
+    "body": "Gap vs QR TIGER, QR Code Generator PRO, Uniqode and QRCode Monkey: every major competitor lets people style the code and we offer almost nothing.\n\nBuild a design panel next to the live preview:\n- foreground/background colour (plus optional gradient), with a contrast warning when the code would be hard to scan\n- dot shape (square, rounded, dots) and corner-eye shape/colour\n- upload a logo for the centre (kept in the browser, error correction raised automatically)\n- frames with call-to-action text (\"Scan me\", \"Menu\", \"Free WiFi\", custom text)\n- a handful of ready-made styles to start from\n- a live scannability check (decode the rendered code in the browser and show pass/fail)\n\nEverything stays free for static codes. Size: feature (multi-phase)."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "Print-ready downloads: PNG at print sizes, SVG, PDF and EPS",
+    "body": "Competitors offer PNG, SVG, PDF and EPS with size presets. Add a download menu with sizes for common uses (business card, flyer, poster, sticker) at 300 dpi, plus vector SVG/PDF/EPS, all generated locally. Show the recommended minimum print size and quiet zone."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "Bulk QR codes from a CSV or a pasted list (ZIP download)",
+    "body": "Bulk creation from CSV is a headline feature of QR Code Generator PRO, Uniqode and QR TIGER. Let people paste a list or upload a CSV (one row per code: content, optional file name and label), apply one design to all, preview, and download a ZIP of PNG/SVG plus a printable sheet. Free for static codes, generated in the browser. Good landing page: \"bulk qr code generator\"."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "Save designs and a brand kit for reuse",
+    "body": "Competitors let people save designs and reuse brand colours/logo. Save the current design as a named style (in the browser; synced for members), and apply it to any new code in one click."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "Scan stats for editable codes: scans by day, country and device",
+    "body": "Analytics (total and unique scans, location, device, time) is the main reason people pay competitors. For editable (Pro) codes, record scans privately (no cookies, no IP storage) and show a simple dashboard with a CSV export. Honest copy about what is and isn't tracked."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "Hosted QR pages: menu/PDF, digital business card, list of links",
+    "body": "Competitors host the page a code points to (PDF menu, vCard page, link-in-bio, app download page). Offer a few hosted page types for editable codes with a clean mobile page, and explain clearly that static vCard/URL codes stay free and never expire."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Template gallery: 10+ designed templates with colours, fonts and spacing",
+    "body": "Gap vs Kickresume (40+ templates), Enhancv, Zety, Resume.io: we offer three. Build a gallery of at least ten distinct, good-looking templates (still ATS-readable: real text, standard headings; any two-column design must be labelled as less ATS-safe), with accent colour, font pair, density and optional photo controls, and live thumbnails rendered from the person's own content. Size: feature or redesign."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Import an existing resume (PDF or pasted text, LinkedIn PDF export)",
+    "body": "Kickresume, Teal and Enhancv let people start from an existing resume or LinkedIn profile. Parse a PDF (in the browser) or pasted text into sections and fields, show what was found for a quick check, and fill the builder. No upload to a server."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Tailor to a job: paste a job ad, see matched and missing keywords",
+    "body": "Keyword matching against a job description is the core of Rezi, Jobscan and Teal. Let people paste a job ad; show a match score, the important skills/keywords that are missing, where to add them, and keep a tailored copy per job. Computed locally, honest about what ATS software really does."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Writing help: bullet suggestions per job title and a bullet improver",
+    "body": "Every competitor has an AI or phrase library for bullets and summaries (Kickresume has 20,000 phrases). Build a large curated library of example bullets and summaries per job title (reuse the examples pages), searchable from each section, plus an improver that flags weak bullets (no action verb, no number, too long, 'responsible for') with concrete rewrites."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Real PDF download with 'fit to one page'",
+    "body": "Download today relies on the browser print dialog. Generate a proper PDF file directly (selectable text, correct margins, file named after the person) with a 'fit to one page' control that adjusts spacing and font size within readable limits, and a page-break preview."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Job application tracker",
+    "body": "Teal and Huntr win high-volume job seekers with a tracker. A simple board (saved, applied, interview, offer) with company, link, date, which resume/cover letter was sent and notes, stored in the browser (synced for members)."
+  },
+  {
+    "species": "wall",
+    "source": "discussion",
+    "title": "Widget gallery: masonry, carousel, marquee, single card, rating badge, popup",
+    "body": "Gap vs Senja (20+ widget templates), Testimonial.to, Famewall: we have one wall look. Build a widget gallery with live preview of the owner's real testimonials: masonry wall, carousel, scrolling marquee, single featured card, compact star-rating badge and a small corner popup; each with light/dark and accent colour, and one copy-paste embed snippet. Size: feature or redesign."
+  },
+  {
+    "species": "wall",
+    "source": "discussion",
+    "title": "Better testimonials: photo, company logo, role, and highlighted phrases",
+    "body": "Competitor walls look credible because each testimonial shows a face, title, company and a highlighted key phrase. Let customers add a photo and role on the collection form (owner can add a logo), and let the owner highlight a phrase that the widgets emphasise. Store images within the existing storage limits."
+  },
+  {
+    "species": "wall",
+    "source": "discussion",
+    "title": "Collection form builder: questions, star rating, thank-you page, reminder link",
+    "body": "Senja and Testimonial.to win on collection. Let owners customise the form's prompts/questions, rating, permission checkbox, thank-you message with a CTA, and generate an email/text template plus a one-click reminder link to send customers. Measure completion."
+  },
+  {
+    "species": "wall",
+    "source": "discussion",
+    "title": "Paste-in import from Google, X, LinkedIn, Product Hunt and others",
+    "body": "Senja imports from 20+ platforms. Without new APIs, let owners paste a review's text and link (or a list) and auto-format it: name, rating, date, source icon and a link to the original, marked as imported."
+  },
+  {
+    "species": "wall",
+    "source": "discussion",
+    "title": "Share a testimonial as an image for social posts",
+    "body": "Senja and others turn testimonials into shareable images. Render any testimonial as a branded square/story PNG in the browser (a few layouts) for Instagram, LinkedIn and X, with a small 'kudospage' mark on free walls."
+  },
+  {
+    "species": "wall",
+    "source": "discussion",
+    "title": "Google review stars: schema.org markup on the wall page",
+    "body": "Testimonial.to lists Google rich snippets as a paid feature. Add correct schema.org Review/AggregateRating markup on public wall pages (following Google's self-serving review rules honestly) and explain it on a landing page."
   }
 ]

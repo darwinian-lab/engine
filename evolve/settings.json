@@ -110,7 +110,7 @@
       "text": "The DW_GH_TOKEN GitHub token expires on 2027-11-26. Create a new fine-grained token (darwinian-lab, all repos, Contents/Secrets/Workflows/Actions read & write) and replace the secret on darwinian-lab/engine."
     }
   ],
-  "spawnConcurrency": 2,
+  "spawnConcurrency": 3,
   "nursery": {
     "simWeight": 1,
     "simFadeAt": 50,
@@ -118,8 +118,8 @@
     "graduateAt": 0.5,
     "fieldSize": 2,
     "nurseryMin": 6,
-    "nurseryMax": 12,
-    "spawnPerCycle": 3,
+    "nurseryMax": 14,
+    "spawnPerCycle": 4,
     "nurseryMaxDays": 7,
     "fieldMaxDays": 21
   },
@@ -161,5 +161,31 @@
   "repairRounds": 3,
   "auditFixRounds": 3,
   "pipeline": "prs",
-  "prReviewRounds": 3
+  "prReviewRounds": 3,
+  "sizeMix": {
+    "small": 0.15,
+    "medium": 0.25,
+    "large": 0.15,
+    "feature": 0.3,
+    "redesign": 0.15
+  },
+  "builders": {
+    "codexShare": 0.4,
+    "codexEffort": "high"
+  },
+  "tournaments": {
+    "enabled": true,
+    "variants": 2,
+    "share": 0.6,
+    "max": 1,
+    "sizes": [
+      "feature",
+      "feature",
+      "redesign"
+    ],
+    "minSims": 6,
+    "minPairs": 2,
+    "maxPairs": 6,
+    "maxDays": 4
+  }
 }

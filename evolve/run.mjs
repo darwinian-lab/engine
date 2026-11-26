@@ -546,6 +546,18 @@ async function cycle(sp) {
       await journal(sp.id, "crossover", null, `crossing ${pair.a.arm_id} (${(pair.a.hypothesis ?? "").slice(0, 80)}) with ${pair.b.arm_id} (${(pair.b.hypothesis ?? "").slice(0, 80)})`);
     }
   }
+  // Tournaments: one big idea (a feature or a redesign) built several ways at once; simulated people compare the
+  // variants side by side and only the best survives (see tournamentCull). Each variant uses a build slot.
+  const tcfg = { variants: 2, share: 0.6, max: 1, sizes: ["feature", "feature", "redesign"], ...(cfg.tournaments ?? {}) };
+  if (usePRs && tcfg.enabled !== false) {
+    for (let t = 0; t < tcfg.max && toSpawn - jobs.length >= tcfg.variants && Math.random() < tcfg.share; t++) {
+      const id = `t${rid()}`;
+      const size = tcfg.sizes[Math.floor(Math.random() * tcfg.sizes.length)];
+      const shared = {};
+      for (let k = 0; k < tcfg.variants; k++) jobs.push({ parent: champion, revival: null, tournament: { id, idx: k, n: tcfg.variants, size, shared } });
+      await journal(sp.id, "note", null, `tournament ${id}: one ${size} idea, built ${tcfg.variants} ways and judged head to head`);
+    }
+  }
   for (let i = jobs.length; i < toSpawn; i++) {
     const rv = revivals[rvIdx++] ?? null;
     let revival = null;
@@ -565,7 +577,7 @@ async function cycle(sp) {
   await Promise.all(
     Array.from({ length: Math.min(cfg.spawnConcurrency ?? 2, jobs.length) }, async () => {
       while (spawnQueue.length && !rateLimited) {
-        const { parent, revival, resume, crossover } = spawnQueue.shift();
+        const { parent, revival, resume, crossover, tournament } = spawnQueue.shift();
         try {
           if (usePRs) {
             const stg = species.stages[Math.min(st.stage, species.stages.length - 1)];
@@ -576,7 +588,7 @@ async function cycle(sp) {
               insights: await insights(sp.id), protectedFiles: species.protected ?? [], backlog: backlogText(issues),
               simFeedback: await simDigest(db, sp.id, parent.arm_id), revival,
             };
-            await pipe.spawnPR(sp, repo, species, brief, st, parent, siblings, { revival, promptCtx, crossover: crossover ?? resume?.crossover ?? null }, resume ?? null);
+            await pipe.spawnPR(sp, repo, species, brief, st, parent, siblings, { revival, promptCtx, crossover: crossover ?? resume?.crossover ?? null, tournament }, resume ?? null);
           } else await spawnOne(sp, repo, species, brief, st, parent, siblings, { backlog: backlogText(issues), revival });
         } catch (e) {
           if (e instanceof RateLimited) {
@@ -619,6 +631,15 @@ async function cycle(sp) {
   const pairs = champRow ? await pairStatsFor(db, sp.id, champRow.arm_id) : {};
   const money = await moneyStatsFor(db, sp.id).catch((e) => (log(`[${sp.id}] money stats unavailable: ${e.message}`), {}));
   const pedigree = await pedigreesFor(sp, arms, issues).catch((e) => (log(`[${sp.id}] pedigree unavailable: ${e.message}`), {}));
+  for (const c of await tournamentCull(sp, arms, quality, sel)) {
+    if (DRY) continue;
+    const a = arms.find((x) => x.arm_id === c.arm_id);
+    await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.4, revivable=0 WHERE species=? AND arm_id=?", [now(), c.cause, st.generation, sp.id, c.arm_id]);
+    await journal(sp.id, "retire", c.arm_id, c.cause);
+    await pipe.closePRs(sp, a, c.cause).catch((e) => log(`closing PRs failed: ${e.message}`));
+    await deleteWorker(`sp-${sp.id}-${c.arm_id}`);
+    arms = arms.filter((x) => x.arm_id !== c.arm_id);
+  }
   const target = Object.fromEntries(arms.map((a) => { try { return [a.arm_id, JSON.parse(a.work_item ?? "{}").target_metric ?? null]; } catch { return [a.arm_id, null]; } }).filter(([, t]) => t));
   const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control" && a.status !== "guard"), real, sims, quality, pairs, money, pedigree, target, weeklyReal: weekly, opts: sel });
   {
@@ -653,9 +674,23 @@ async function cycle(sp) {
       const c = dec.combined[id], q = quality[id], pr = pairs[id];
       return `P(regression)=${(dec.preg?.[id] ?? 0).toFixed(2)}, score ${q ? q.mean.toFixed(0) : "-"} vs ${quality[champion.arm_id]?.mean?.toFixed(0) ?? "-"}, side by side ${pr ? `${pr.wins}-${pr.losses}-${pr.ties}` : "-"} [${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real]`;
     };
+    const tourDone = new Set();
     for (const id of dec.promotions ?? []) {
       const winner = arms.find((a) => a.arm_id === id);
       if (!winner) continue;
+      // One variant per tournament: the best-ranked promotable one wins it, its rivals end here.
+      if (winner.tournament) {
+        if (tourDone.has(winner.tournament)) continue;
+        tourDone.add(winner.tournament);
+        for (const r of arms.filter((a) => a.tournament === winner.tournament && a.arm_id !== id && ["nursery", "live"].includes(a.status))) {
+          const why = `lost tournament ${winner.tournament}: rival variant ${id} was promoted`;
+          await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.4, revivable=0 WHERE species=? AND arm_id=?", [now(), why, st.generation, sp.id, r.arm_id]);
+          await journal(sp.id, "retire", r.arm_id, why);
+          await pipe.closePRs(sp, r, why).catch(() => {});
+          await deleteWorker(`sp-${sp.id}-${r.arm_id}`);
+          r.status = "retired";
+        }
+      }
       const outcome = await pipe.promotePR(sp, repo, species, st, winner).catch((e) => (log(`promotion failed: ${e.message}`), ghNotice(`${sp.id} promotion`, `${winner.arm_id}: ${e.message}`), "failed"));
       if (outcome === "finalist") {
         await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.9, revivable=0 WHERE species=? AND arm_id=?", [now(), `won, then continued as finalist ${winner.arm_id}r replayed onto main (conflicts)`, st.generation, sp.id, winner.arm_id]);
@@ -784,6 +819,43 @@ async function pedigreesFor(sp, arms, issues) {
   return out;
 }
 
+/**
+ * Tournament judging. Variants of one idea compete head to head (side-by-side sims between them). Once every
+ * variant has enough simulated sessions and head-to-head comparisons, or the tournament is older than maxDays, the
+ * best variant (head-to-head record first, experience score as tie-break) carries on and the rest are retired.
+ */
+async function tournamentCull(sp, arms, quality, sel) {
+  const t = { minSims: 6, minPairs: 2, maxDays: 4, ...(cfg.tournaments ?? {}) };
+  const groups = {};
+  for (const a of arms) if (a.tournament && ["nursery", "live"].includes(a.status)) (groups[a.tournament] ??= []).push(a);
+  const out = [];
+  for (const [id, members] of Object.entries(groups)) {
+    if (members.length < 2) continue;
+    const ids = members.map((m) => m.arm_id);
+    const rows = await db.all(`SELECT arm_a, arm_b, winner FROM sim_pairs WHERE species=? AND arm_a IN (${ids.map(() => "?").join(",")}) AND arm_b IN (${ids.map(() => "?").join(",")})`, [sp.id, ...ids, ...ids]).catch(() => []);
+    const rec = Object.fromEntries(ids.map((x) => [x, { w: 0, l: 0, t: 0 }]));
+    const per = {};
+    for (const r of rows) {
+      const k = [r.arm_a, r.arm_b].sort().join("|");
+      per[k] = (per[k] ?? 0) + 1;
+      if (!r.winner) { rec[r.arm_a].t++; rec[r.arm_b].t++; }
+      else { const lo = r.winner === r.arm_a ? r.arm_b : r.arm_a; rec[r.winner].w++; rec[lo].l++; }
+    }
+    const pairsOk = ids.every((x, i) => ids.slice(i + 1).every((y) => (per[[x, y].sort().join("|")] ?? 0) >= t.minPairs));
+    const simsOk = ids.every((x) => (quality[x]?.n ?? 0) >= t.minSims);
+    const old = Math.min(...members.map((m) => m.created_at ?? Date.now())) < Date.now() - t.maxDays * 86400_000;
+    if (!((pairsOk && simsOk) || old)) continue;
+    const share = (x) => { const r = rec[x]; const n = r.w + r.l + r.t; return n ? (r.w + 0.5 * r.t) / n : 0.5; };
+    const ranked = ids.slice().sort((x, y) => share(y) - share(x) || (quality[y]?.mean ?? 0) - (quality[x]?.mean ?? 0));
+    const best = ranked[0];
+    for (const x of ranked.slice(1)) {
+      const r = rec[x];
+      out.push({ arm_id: x, cause: `lost tournament ${id} to ${best}: head to head ${r.w}-${r.l}-${r.t}, experience score ${quality[x]?.mean?.toFixed(0) ?? "-"} vs ${quality[best]?.mean?.toFixed(0) ?? "-"}${old && !(pairsOk && simsOk) ? " (time limit)" : ""}` });
+    }
+  }
+  return out;
+}
+
 /** The two most promising PR mutants (by P(beats champion)) that have not been crossed with each other yet. */
 async function crossoverPair(sp, arms, champion, real, weekly) {
   const sel = { ...NURSERY_DEFAULTS, ...cfg.selection, ...(cfg.nursery ?? {}) };
@@ -793,7 +865,7 @@ async function crossoverPair(sp, arms, champion, real, weekly) {
   const judged = (id) => (d.combined[id]?.sims.trials ?? 0) >= sel.minSims || (d.combined[id]?.real.trials ?? 0) >= sel.minTrials;
   const good = pool.filter((a) => judged(a.arm_id) && (d.pbeat[a.arm_id] ?? 0) >= (cfg.crossover?.minPBeat ?? 0.5)).sort((x, y) => d.pbeat[y.arm_id] - d.pbeat[x.arm_id]);
   const tried = (await db.all("SELECT arm_id, crossed_from FROM arms WHERE species=? AND crossed_from IS NOT NULL", [sp.id])).map((r) => ({ id: r.arm_id, from: r.crossed_from.split(",") }));
-  const related = (a, b) => (a.crossed_from ?? "").split(",").includes(b.arm_id) || (b.crossed_from ?? "").split(",").includes(a.arm_id);
+  const related = (a, b) => (a.tournament && a.tournament === b.tournament) || (a.crossed_from ?? "").split(",").includes(b.arm_id) || (b.crossed_from ?? "").split(",").includes(a.arm_id);
   for (let i = 0; i < good.length; i++) {
     for (let j = i + 1; j < good.length; j++) {
       const [a, b] = [good[i], good[j]];

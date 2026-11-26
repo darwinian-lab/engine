@@ -4,6 +4,8 @@ const SIZE_GUIDE = {
   small: "SMALL: one focused change (copy, layout, a default, a micro-interaction, one new SEO page). Under ~150 changed lines.",
   medium: "MEDIUM: one meaningful feature or improvement (a new tool option, a better flow, a set of SEO landing pages). Under ~600 changed lines.",
   large: "LARGE: a bold capability that could change the product's trajectory (e.g. accounts, a paid tier with checkout, a new format). Keep it coherent and fully working.",
+  feature: "FEATURE: a whole capability that competitors have and we lack (e.g. a design studio, bulk creation, an import flow, a widget gallery), built across several phases with its own UI, tests and a landing page. Thousands of changed lines are fine. It must be complete and polished, not a stub.",
+  redesign: "REDESIGN: change how the product looks and feels: theme, colours, typography, layout, navigation, illustrations, the main screen's composition. Take a real visual risk with a distinct point of view; don't just tweak spacing. Keep every existing feature working, accessible (contrast, focus, mobile) and fast.",
 };
 
 export function mutationPrompt({ species, brief, stage, stageEvent, size, lineage, siblings, insights, protectedFiles, backlog, simFeedback, revival }) {
@@ -306,7 +308,7 @@ Pick a direction different from the siblings. Be concrete enough that a separate
 Answer with ONLY a JSON object:
 {"title": "max 8 words", "hypothesis": "what changes and why it should help real people (2-3 sentences)",
  "work_item": "the full work description for the builders: user-visible behaviour, scope, out of scope, constraints, risks",
- "acceptance_criteria": ["observable criteria"], "implements_issue": <issue number or null>, "size": "small|medium|large",
+ "acceptance_criteria": ["observable criteria"], "implements_issue": <issue number or null>, "size": "small|medium|large|feature|redesign",
  "target_metric": "activation|experience|checkouts|search"}
 
 target_metric is the ONE thing this mutant is meant to improve, and it is judged mainly on it (the others are

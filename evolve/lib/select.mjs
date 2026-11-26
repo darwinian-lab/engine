@@ -82,10 +82,13 @@ export function decide(arms, stats, weeklyVisitors, now = Date.now(), opts = {})
   return { promote, retire, spawn, pb, population, champion: promote ?? champion?.arm_id ?? null };
 }
 
-/** Mutation size: mostly small steps, occasionally big leaps. */
-export function mutationSize(rng = Math.random) {
-  const x = rng();
-  return x < 0.5 ? "small" : x < 0.85 ? "medium" : "large";
+export const SIZES = ["small", "medium", "large", "feature", "redesign"];
+/** Mutation size. Default mix leans to big leaps: whole features and redesigns, not just tweaks. */
+export function mutationSize(rng = Math.random, mix = { small: 0.15, medium: 0.25, large: 0.15, feature: 0.3, redesign: 0.15 }) {
+  const total = Object.values(mix).reduce((a, b) => a + b, 0);
+  let x = rng() * total;
+  for (const [k, v] of Object.entries(mix)) if ((x -= v) < 0) return k;
+  return "medium";
 }
 
 /**

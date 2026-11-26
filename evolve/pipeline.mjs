@@ -7,12 +7,33 @@ import { run, must, rid, log, extractJson, limitHit } from "./lib/util.mjs";
 import { claudeStream } from "./lib/stream.mjs";
 import { gate } from "./lib/gates.mjs";
 import { hypothesisPrompt, buildPrompt, prReviewPrompt, addressPrompt, auditPrompt, repairPrompt, lessonsPrompt } from "./lib/prompts.mjs";
-import { mutationSize } from "./lib/select.mjs";
+import { mutationSize, SIZES } from "./lib/select.mjs";
 import { parseImplements, comment } from "./lib/issues.mjs";
 import { openPR, commentPR, closePR } from "./lib/ghpr.mjs";
 
 const DOC_DOMAINS = ["hono.dev", "developers.cloudflare.com", "clerk.com", "developer.mozilla.org", "web.dev", "playwright.dev"];
 const GIT_ID = ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local"];
+
+// Fallback directions for tournament variants when the hypothesis step doesn't give its own.
+const DEFAULT_DIRECTIONS = {
+  feature: [
+    "MINIMAL: the smallest, calmest version that fully does the job. Few controls, smart defaults, zero clutter.",
+    "RICH: the most capable version. Every option a demanding user expects from the best competitor, well organised.",
+    "GUIDED: a step-by-step version that walks a first-time visitor through it, with previews and plain-language help.",
+  ],
+  redesign: [
+    "Quiet and editorial: generous whitespace, a refined type pairing, restrained colour.",
+    "Bold and confident: strong colour, big type, a memorable signature element.",
+    "Warm and friendly: rounded shapes, soft palette, approachable illustrations or icons.",
+  ],
+};
+const tournamentAsk = (n, size) => `
+
+## This idea will be built as a tournament of ${n} variants
+Choose an idea big enough that different executions could genuinely differ (size ${size}). Also add to your JSON a
+field "variants": an array of exactly ${n} strings, each a clearly different DIRECTION for building the same idea
+(different interaction model, depth or visual style; 1-3 sentences each, concrete enough to commit to). Separate
+teams will build one each; simulated people compare them side by side and only the best survives.`;
 
 export function makePipeline(d) {
   const { cfg, db, journal, ghNotice, DRY, codex, deployArm, deleteWorker, photograph, stillborn, numstat, gitLock, RateLimited, now, cfEnv } = d;
@@ -42,6 +63,48 @@ export function makePipeline(d) {
     const text = r.out + r.err;
     if (limitHit(r)) throw new RateLimited(text.slice(-500));
     return json ? extractJson(r.out) : r;
+  }
+
+  /**
+   * Codex as a second builder. It edits the worktree (workspace-write sandbox, network for the local dev server and
+   * docs, its own browser for checking the UI); the engine makes the commit. No secrets reach it (agentEnv).
+   */
+  async function codexBuild({ sp, armId, wt, branch, workItem, title, resultFile, size, resumed }) {
+    if ((await run("git", ["rev-parse", "--verify", "-q", `refs/heads/${branch}`], { cwd: wt })).code !== 0) await must("git", ["checkout", "-q", "-b", branch], { cwd: wt });
+    else await must("git", ["checkout", "-q", branch], { cwd: wt });
+    fs.mkdirSync(path.join(wt, ".dw"), { recursive: true });
+    const promptFile = path.join(wt, ".dw", "codex-build.md");
+    fs.writeFileSync(promptFile, `# Build this mutation
+
+You are building one mutant in a Darwinian software experiment. There is no human: work autonomously to the end.
+
+1. Read CLAUDE.md, CHARTER.md, BRIEF.md and LESSONS.md in this repository first; they are the rules (CLAUDE.md
+   applies to you too). Never modify protected files listed there or in CHARTER.md.
+2. Implement the work item below completely: plan it in phases, build each phase, test it, and look at the result in
+   your browser (start the dev server as CLAUDE.md describes) on desktop and mobile widths before moving on.
+3. Add or update tests. Run npm test, npm run typecheck and npm run e2e, and fix everything until they pass.
+4. Do not commit and do not touch git history; the engine commits your work. Do not push.${resumed ? "\n5. An earlier attempt was interrupted: inspect `git status` / `git diff` and continue from the existing work." : ""}
+
+Finish with a short plain summary of what you built (what a user will see, and anything left out).
+
+${workItem}`);
+    const out = path.join(wt, ".dw", "codex-build-out.txt");
+    const s = cfg.sims ?? {};
+    const profile = path.join(cfg.workdir, ".tmp", "agent-browser", rid(8));
+    const mcpArgs = "[" + ["--headless", "--browser", s.browser ?? "chrome", "--user-data-dir", profile, "--output-dir", path.join(wt, ".dw", "browser")].map((a) => JSON.stringify(a)).join(",") + "]";
+    const b = cfg.builders ?? {};
+    const args = ["exec", "--skip-git-repo-check", "-s", "workspace-write", "-c", 'approval_policy="never"', "-c", "sandbox_workspace_write.network_access=true",
+      "-c", `model_reasoning_effort="${b.codexEffort ?? "high"}"`, ...(b.codexModel ? ["-m", b.codexModel] : []),
+      "-c", 'mcp_servers.browser.default_tools_approval_mode="approve"', "-c", `mcp_servers.browser.command=${JSON.stringify(s.mcpCommand ?? "playwright-mcp")}`,
+      "-c", `mcp_servers.browser.args=${mcpArgs}`, "-c", "mcp_servers.browser.startup_timeout_sec=60", "-c", "mcp_servers.browser.tool_timeout_sec=120",
+      "-o", out, `Read ${promptFile} and carry out the instructions in it exactly.`];
+    const minutes = Math.round((cfg.timeouts?.buildMin ?? 150) * (["feature", "redesign", "large"].includes(size) ? 1.6 : 1));
+    const r = await run("codex", args, { cwd: wt, timeoutMs: minutes * 60_000, agent: true, env: { DW_DEV_PORT: String(8800 + Math.floor(Math.random() * 900)) }, echoPrefix: `[${sp.id}/${armId} codex build]` });
+    const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : r.out;
+    if (limitHit({ ...r, out: text })) throw new RateLimited(text.slice(-500));
+    await run("git", ["add", "-A"], { cwd: wt });
+    if ((await run("git", ["diff", "--cached", "--quiet"], { cwd: wt })).code !== 0) await must("git", [...GIT_ID, "commit", "-q", "-m", `${title}\n\nBuilt by Codex for mutant ${armId}.`], { cwd: wt });
+    fs.writeFileSync(resultFile, JSON.stringify({ branch, title, summary: text.trim().slice(0, 4000) || `Codex exited with code ${r.code}`, builder: "codex" }));
   }
 
   // Agents get a full shell (no secrets in their environment); pushing and network fetches stay blocked.
@@ -125,8 +188,11 @@ export function makePipeline(d) {
     const repoSlug = `${cfg.github.org}/${sp.repo}`;
     const armId = resume?.armId ?? `g${st.generation + 1}-${rid()}`;
     const prefix = `arm/${armId}`;
-    const size = resume?.size ?? mutationSize();
-    const wip = { dir: path.join(cfg.workdir, "wip", `${sp.id}-${armId}`), state: resume ?? { armId, species: sp.id, parentId: parent.arm_id, size, revival: ctx.revival ?? null, crossover: ctx.crossover ?? null, attempts: 0, created: now() } };
+    let size = resume?.size ?? ctx.tournament?.size ?? mutationSize(Math.random, cfg.sizeMix);
+    // Tournament: several variants of one idea built in different directions (see run.mjs). Variant 0 chooses the
+    // hypothesis; the others wait for it and build the same idea their own way.
+    const tour = resume?.tournament ?? (ctx.tournament ? { id: ctx.tournament.id, idx: ctx.tournament.idx, n: ctx.tournament.n } : null);
+    const wip = { dir: path.join(cfg.workdir, "wip", `${sp.id}-${armId}`), state: resume ?? { armId, species: sp.id, parentId: parent.arm_id, size, revival: ctx.revival ?? null, crossover: ctx.crossover ?? null, tournament: tour, attempts: 0, created: now() } };
     const cross = ctx.crossover ?? null;
     const wt = path.join(cfg.workdir, "wt", `${sp.id}-${armId}`);
     const runDir = path.join(cfg.workdir, ".tmp", "runs", `${sp.id}-${armId}`);
@@ -166,19 +232,25 @@ export function makePipeline(d) {
 
       // 1. Hypothesis: what to build and why.
       // Hypotheses are chosen one at a time per species so siblings bred in the same cycle pick different ideas.
-      const hyp = wip.state.hyp ?? (cross ? crossoverHypothesis(cross) : null) ?? await hypLock(async () => {
+      const choose = () => hypLock(async () => {
         const taken = (chosenThisCycle.get(sp.id) ?? []).map((h) => `- (this cycle) ${h}`).join("\n");
         const promptCtx = { ...ctx.promptCtx, size, siblings: [ctx.promptCtx?.siblings, taken].filter(Boolean).join("\n") };
-        const h = await agent({ label: `${sp.id}/${armId} hypothesis`, cwd: wt, prompt: hypothesisPrompt(promptCtx) + (taken ? "\n\nOther mutants of this cycle already took the ideas marked (this cycle) above. Choose a clearly different problem, not a variation of theirs." : ""), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 15, json: true });
+        const h = await agent({ label: `${sp.id}/${armId} hypothesis`, cwd: wt, prompt: hypothesisPrompt(promptCtx) + (taken ? "\n\nOther mutants of this cycle already took the ideas marked (this cycle) above. Choose a clearly different problem, not a variation of theirs." : "") + (tour ? tournamentAsk(tour.n, size) : ""), model: cfg.models.hypothesis ?? "opus", tools: READ_TOOLS, minutes: 15, json: true });
         if (h?.title) chosenThisCycle.set(sp.id, [...(chosenThisCycle.get(sp.id) ?? []), `${h.title}: ${String(h.hypothesis ?? "").slice(0, 200)}`]);
         return h;
       });
+      let hyp = wip.state.hyp ?? (cross ? crossoverHypothesis(cross) : null);
+      if (!hyp && ctx.tournament) hyp = await (ctx.tournament.shared.hyp ??= choose());
+      else if (!hyp) hyp = await choose();
+      // An agreed backlog item knows its own size; otherwise the drawn size stands.
+      if (!wip.state.hyp && !tour && hyp?.implements_issue && SIZES.includes(hyp.size)) size = wip.state.size = hyp.size;
+      const direction = tour ? (hyp?.variants?.[tour.idx] ?? DEFAULT_DIRECTIONS[size === "redesign" ? "redesign" : "feature"][tour.idx % 3]) : null;
       if (!hyp?.work_item) {
         await journal(sp.id, "reject", armId, "hypothesis step produced no work item");
         return null;
       }
       const revivalNote = ctx.revival ? `\n\n## This is a revival\nAn earlier mutant tried this idea and died (${ctx.revival.cause}). Re-implement the same idea on the current code and avoid what killed it.\n\n${ctx.revival.mutation}` : "";
-      const workItem = `# ${hyp.title}\n\n**Hypothesis:** ${hyp.hypothesis}\n${hyp.implements_issue ? `\n**Implements:** #${hyp.implements_issue}\n` : ""}\n## Work item\n${hyp.work_item}\n\n## Acceptance criteria\n${(hyp.acceptance_criteria ?? []).map((c) => `- ${c}`).join("\n")}${revivalNote}\n`;
+      const workItem = `# ${hyp.title}\n\n**Hypothesis:** ${hyp.hypothesis}\n${hyp.implements_issue ? `\n**Implements:** #${hyp.implements_issue}\n` : ""}\n## Work item\n${hyp.work_item}\n\n## Acceptance criteria\n${(hyp.acceptance_criteria ?? []).map((c) => `- ${c}`).join("\n")}${revivalNote}${direction ? `\n\n## Your variant's direction\nThis idea is being built ${tour.n} ways at once by separate teams; simulated people compare the versions side by side and only the best survives. Build it THIS way, fully committed to the direction, not a hedge between directions:\n\n${direction}` : ""}\n`;
       const workItemFile = path.join(runDir, "work-item.md");
       fs.writeFileSync(workItemFile, workItem);
       await checkpoint("build", { hyp });
@@ -216,8 +288,13 @@ export function makePipeline(d) {
         }
         fs.writeFileSync(resultFile, JSON.stringify({ branch, title: hyp.title, summary: failed ?? `Combines ${cross.a.arm_id} and ${cross.b.arm_id}, which each beat the champion on their own.\n\n- ${cross.a.hypothesis}\n- ${cross.b.hypothesis}`, head: failed ? null : "merged" }));
         await checkpoint("checks");
+      } else if (!(resume && fs.existsSync(resultFile) && wip.state.stage !== "build") && (wip.state.builder ??= Math.random() < (cfg.builders?.codexShare ?? 0) ? "codex" : "claude") === "codex") {
+        // Codex builds part of the mutants on its own quota; gates and review below are the same for both.
+        await checkpoint(null, { builder: "codex" });
+        await codexBuild({ sp, armId, wt, branch, workItem, title: hyp.title, resultFile, size, resumed: Boolean(resume) });
+        await checkpoint("checks");
       } else if (!(resume && fs.existsSync(resultFile) && wip.state.stage !== "build")) {
-        const buildArgs = { label: `${sp.id}/${armId} build`, cwd: wt, model: cfg.models.mutate ?? "sonnet", tools: [...CODE_TOOLS, "Task", "TodoWrite"], browser: true, web: true, minutes: cfg.timeouts?.buildMin ?? 150, onSession: (id) => checkpoint(null, { buildSession: id }) };
+        const buildArgs = { label: `${sp.id}/${armId} build`, cwd: wt, model: cfg.models.mutate ?? "sonnet", tools: [...CODE_TOOLS, "Task", "TodoWrite"], browser: true, web: true, minutes: Math.round((cfg.timeouts?.buildMin ?? 150) * (["feature", "redesign", "large"].includes(size) ? 1.6 : 1)), onSession: (id) => checkpoint(null, { buildSession: id }) };
         if (resume && wip.state.buildSession) {
           await agent({ ...buildArgs, resume: wip.state.buildSession, prompt: `You were interrupted (usage limit, outage or crash) and this session has been restored. Continue the work exactly where you left off: check git status, git log and the run folder ${runDir} (run-config.md, completion notes, reviews), finish the remaining phases, and write ${resultFile} last as the skill describes.` });
         } else {
@@ -264,7 +341,8 @@ export function makePipeline(d) {
       const prBodies = prBody;
 
       // 5. Automated PR review: Codex (charter) + a fresh Claude reviewer, feedback commits, up to N rounds.
-      const rounds = cfg.prReviewRounds ?? 3;
+      // Review effort follows the size of the change: small tweaks get one round, big ones the full count.
+      const rounds = Math.min(cfg.prReviewRounds ?? 3, { small: 1, medium: 2 }[size] ?? 3);
       const history = [];
       // A crossover that merged cleanly combines two already-reviewed changes: skip straight to the nursery.
       let approved = Boolean(cross && !crossResolved);
@@ -341,14 +419,14 @@ export function makePipeline(d) {
       const issueNo = hyp.implements_issue ?? parseImplements(workItem);
       await db.run(
         // Upsert: a resumed mutant may already have a row from an earlier, interrupted attempt.
-        `INSERT INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at, mutation, size, diffstat, audit, personas, shot_at, revived_from, revivable, issue, prs, work_item, crossed_from)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-         ON CONFLICT (species, arm_id) DO UPDATE SET origin=excluded.origin, status=excluded.status, generation=excluded.generation, parent=excluded.parent, git_ref=excluded.git_ref, hypothesis=excluded.hypothesis, mutation=excluded.mutation, size=excluded.size, diffstat=excluded.diffstat, audit=excluded.audit, personas=excluded.personas, shot_at=excluded.shot_at, revived_from=excluded.revived_from, revivable=excluded.revivable, issue=excluded.issue, prs=excluded.prs, work_item=excluded.work_item, crossed_from=excluded.crossed_from, retired_at=NULL, cause=NULL`,
-        [sp.id, armId, origin, "nursery", st.generation + 1, parent.arm_id, tag, `${hyp.title}: ${hyp.hypothesis}`.slice(0, 600), now(), mutationText, size, JSON.stringify(diffstat), JSON.stringify(auditInfo), null, now(), ctx.revival?.root ?? null, 1, issueNo, JSON.stringify(prs), JSON.stringify(hyp), cross ? `${cross.a.arm_id},${cross.b.arm_id}` : null],
+        `INSERT INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at, mutation, size, diffstat, audit, personas, shot_at, revived_from, revivable, issue, prs, work_item, crossed_from, tournament, variant)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT (species, arm_id) DO UPDATE SET origin=excluded.origin, status=excluded.status, generation=excluded.generation, parent=excluded.parent, git_ref=excluded.git_ref, hypothesis=excluded.hypothesis, mutation=excluded.mutation, size=excluded.size, diffstat=excluded.diffstat, audit=excluded.audit, personas=excluded.personas, shot_at=excluded.shot_at, revived_from=excluded.revived_from, revivable=excluded.revivable, issue=excluded.issue, prs=excluded.prs, work_item=excluded.work_item, crossed_from=excluded.crossed_from, tournament=excluded.tournament, variant=excluded.variant, retired_at=NULL, cause=NULL`,
+        [sp.id, armId, origin, "nursery", st.generation + 1, parent.arm_id, tag, `${hyp.title}: ${hyp.hypothesis}`.slice(0, 600), now(), mutationText, size, JSON.stringify(diffstat), JSON.stringify(auditInfo), null, now(), ctx.revival?.root ?? null, 1, issueNo, JSON.stringify(prs), JSON.stringify(hyp), cross ? `${cross.a.arm_id},${cross.b.arm_id}` : null, tour?.id ?? null, direction ? direction.slice(0, 300) : null],
       );
       await commentPR(repoSlug, topPr.number, `Approved by automated review and deployed to the nursery as \`${armId}\`. Simulated people judge it next; it is merged only if it wins selection.`);
       if (issueNo) await comment(repoSlug, issueNo, `Mutant \`${armId}\` is trying this: ${topPr.url}`).catch(() => {});
-      await journal(sp.id, "spawn", armId, `${cross ? `crossover of ${cross.a.arm_id} × ${cross.b.arm_id}, ` : ""}${size} ${ctx.revival ? `revival of ${ctx.revival.root}, ` : ""}mutation of ${parent.arm_id} as ${prs.map((p) => `#${p.number}`).join(" + ")}: ${hyp.title}. ${hyp.hypothesis}`);
+      await journal(sp.id, "spawn", armId, `${cross ? `crossover of ${cross.a.arm_id} × ${cross.b.arm_id}, ` : ""}${size} ${ctx.revival ? `revival of ${ctx.revival.root}, ` : ""}mutation of ${parent.arm_id}${tour ? ` (tournament ${tour.id}, variant ${tour.idx + 1}/${tour.n}: ${String(direction).slice(0, 80)})` : ""} as ${prs.map((p) => `#${p.number}`).join(" + ")}: ${hyp.title}. ${hyp.hypothesis}`);
       return armId;
     } catch (e) {
       // Keep the progress for the next cycle (usage limit, GitHub outage, crash), unless it keeps failing.
