@@ -33,5 +33,50 @@
     "species": "qr",
     "title": "Mention editable codes when people need them (honestly)",
     "body": "Owner request, TOP PRIORITY for this week: the product must be able to make its first sale. People only realise they want an editable code when they're about to print. After a download of a Link code, show one calm line under the download buttons: 'Printing this? If the link might change, an editable code lets you update it later without reprinting. $19 once, never expires.' linking to Pro. Dismissible, no pop-ups or pressure, never on Wi-Fi/contact codes. Measure with dw.track."
+  },
+  {
+    "species": "qr",
+    "title": "\"Will this QR code stop working?\" checker",
+    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. Build /qr-code-checker: a visitor uploads a picture of any QR code or scans it with the camera, decoded entirely in the browser (nothing uploaded). Show what the code contains and a plain verdict: STATIC (the destination is inside the code itself, nobody can switch it off) or REDIRECT (it points to a short-link/QR service that forwards to the real page; whoever runs that service can change or stop it, and with some providers it stops when a trial or subscription ends). Detect redirects with a maintained list of known QR/short-link service domains plus a generic heuristic (short path on a domain different from the final site); say 'redirects through <domain>', never accuse a company. Then offer: 'Make a permanent static code for the same destination' prefilled in our generator. Also add a short answer page /why-did-my-qr-code-stop-working explaining the cause and the options (ask the provider, reprint with a static code, cover with a sticker), linking to the checker. Works on phones (390 px), camera permission explained before asking. Facts about other products (prices, limits, what is free) must be checked on their own public pages with web search at build time, stated with the date checked, linked to the source, and neutral in tone: no 'scam', no claims we cannot back up (CHARTER law 6). Say plainly that the page is written by the makers of our product. Add the page to the sitemap and link it from the footer or a hub page."
+  },
+  {
+    "species": "qr",
+    "title": "More QR types people search for (rendered locally)",
+    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. Add generators with their own landing pages for: WhatsApp chat, vCard/contact card, calendar event, geo location, and app-store link. Personal data (names, numbers, addresses) must be rendered in the browser and never put in request URLs. Each page answers the search in its first lines (what it does, that it is free and never expires) and has the working generator at the top."
+  },
+  {
+    "species": "wall",
+    "title": "Honest comparison pages: Kudospage vs Senja, Testimonial.to, Famewall",
+    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. Build /senja-alternative, /testimonial-to-alternative, /famewall-alternative and a hub /compare. Each page: first lines answer 'what is a cheaper/free alternative to X' with concrete facts; a dated table of what each plan costs over 1 and 3 years next to Kudospage (free forever, Pro $29 once); an honest 'when X is the better choice' section (e.g. video testimonials, integrations we don't have); a clear start button. Also /best-testimonial-tools: a fair roundup of 6-8 real tools including ours with who each is best for (we may list ours first, labelled as ours). Facts about other products (prices, limits, what is free) must be checked on their own public pages with web search at build time, stated with the date checked, linked to the source, and neutral in tone: no 'scam', no claims we cannot back up (CHARTER law 6). Say plainly that the page is written by the makers of our product. Add the page to the sitemap and link it from the footer or a hub page."
+  },
+  {
+    "species": "wall",
+    "title": "Import testimonials from a CSV (move from another tool in a minute)",
+    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. On the manage page let the owner upload or paste a CSV exported from another testimonial tool (or any spreadsheet): map columns for text, name, role/company, rating and date with a preview, skip duplicates, mark them as added by the owner (existing source field), never overwrite existing testimonials, and report how many were imported. Mention it on the comparison pages ('bring your testimonials with you')."
+  },
+  {
+    "species": "resume",
+    "title": "Help for people stuck at a resume-download paywall",
+    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. Build (1) /import: paste resume text or drop a PDF/TXT/DOCX the visitor already has; parse it in the browser into our editor fields (name, contact, summary, experience, education, skills) with a review step, never overwriting a saved draft without asking; then free PDF download as usual. (2) Guides /how-to-cancel-resume-io, /how-to-cancel-zety, /how-to-cancel-resume-genius: the real, current cancellation and refund steps taken from each company's own help pages (with links and the date checked), a short polite cancellation/refund email template the visitor can copy, and a link to /import. Not legal advice; factual and calm. Facts about other products (prices, limits, what is free) must be checked on their own public pages with web search at build time, stated with the date checked, linked to the source, and neutral in tone: no 'scam', no claims we cannot back up (CHARTER law 6). Say plainly that the page is written by the makers of our product. Add the page to the sitemap and link it from the footer or a hub page."
+  },
+  {
+    "species": "resume",
+    "title": "Honest comparison pages for resume builders",
+    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. Build /resume-io-alternative, /zety-alternative, /resume-genius-alternative and /best-free-resume-builders (a fair roundup of 6-8 real builders including ours: what is truly free, whether download costs money, whether an account is needed; ours may be listed first, labelled as ours). First lines answer the query directly; include an honest 'when the other one is better' section. Facts about other products (prices, limits, what is free) must be checked on their own public pages with web search at build time, stated with the date checked, linked to the source, and neutral in tone: no 'scam', no claims we cannot back up (CHARTER law 6). Say plainly that the page is written by the makers of our product. Add the page to the sitemap and link it from the footer or a hub page."
+  },
+  {
+    "species": "qr",
+    "title": "llms.txt and facts page for AI assistants",
+    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. Serve /llms.txt (plain text/markdown): what QRs That Last is in two sentences, exact facts (what is free, prices and billing, limits, no account needed, privacy), and links to the main pages with one-line descriptions. Add a concise /facts page with the same facts as visible HTML and FAQ structured data (JSON-LD) so AI search can quote it. Keep both generated from the same constants as /pricing so they never disagree. Add /llms.txt to the species passthrough only if needed; it must return 200 for crawlers."
+  },
+  {
+    "species": "resume",
+    "title": "llms.txt and facts page for AI assistants",
+    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. Serve /llms.txt (plain text/markdown): what CalmCV is in two sentences, exact facts (what is free, prices and billing, limits, no account needed, privacy), and links to the main pages with one-line descriptions. Add a concise /facts page with the same facts as visible HTML and FAQ structured data (JSON-LD) so AI search can quote it. Keep both generated from the same constants as /pricing so they never disagree. Add /llms.txt to the species passthrough only if needed; it must return 200 for crawlers."
+  },
+  {
+    "species": "wall",
+    "title": "llms.txt and facts page for AI assistants",
+    "body": "Owner request, HIGH PRIORITY (growth): we need real visitors. Serve /llms.txt (plain text/markdown): what Kudospage is in two sentences, exact facts (what is free, prices and billing, limits, no account needed, privacy), and links to the main pages with one-line descriptions. Add a concise /facts page with the same facts as visible HTML and FAQ structured data (JSON-LD) so AI search can quote it. Keep both generated from the same constants as /pricing so they never disagree. Add /llms.txt to the species passthrough only if needed; it must return 200 for crawlers."
   }
 ]
