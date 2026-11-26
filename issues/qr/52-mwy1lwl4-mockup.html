@@ -1,0 +1,77 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>WhatsApp QR Code Generator | QRs That Last</title>
+<style>
+:root{--paper:#eef1ee;--sheet:#fff;--ink:#000;--ink-2:#3e4641;--ink-3:#6b746e;--rule:#c9d0cb;--signal:#0f9a4a;--signal-wash:#e0f3e7;--f:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--r:6px}
+*{box-sizing:border-box}
+body{margin:0;overflow-x:clip;background:var(--paper);color:var(--ink);font:400 17px/1.55 var(--f)}
+a{color:inherit;text-underline-offset:3px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+.top{display:flex;align-items:center;justify-content:space-between;height:72px}
+.mark{display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.02em;text-decoration:none}
+.mark i{width:22px;height:22px;border:4px solid var(--ink);display:grid;place-items:center}
+.mark i:after{content:"";width:6px;height:6px;background:var(--ink)}
+.top nav a{margin-left:22px;text-decoration:none;color:var(--ink-2);font-size:15px;font-weight:500}
+h1{font-weight:800;font-size:clamp(34px,4.6vw,56px);line-height:1;letter-spacing:-.04em;margin:30px 0 16px;text-wrap:balance}
+h2{font-weight:750;font-size:clamp(24px,3vw,32px);line-height:1.1;letter-spacing:-.03em;margin:0 0 14px}
+h3{font-weight:700;font-size:18px;margin:0 0 4px}
+p{margin:0 0 14px}.lead{font-size:19px;line-height:1.5;color:var(--ink-2);max-width:46ch;margin-bottom:26px}
+.muted{color:var(--ink-3)}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:48px;padding:0 22px;border-radius:var(--r);border:2px solid var(--ink);background:var(--ink);color:#fff;font:700 16px var(--f)}
+.btn.ghost{background:transparent;color:var(--ink)}
+label{display:block;font-weight:650;font-size:14px;margin:16px 0 7px}
+input,select,textarea{width:100%;font:inherit;font-size:16px;padding:12px 14px;border:1.5px solid var(--rule);border-radius:var(--r);background:var(--sheet);color:var(--ink)}
+.hero{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:0 56px;align-items:start;padding-bottom:56px}
+@media(max-width:880px){.hero{grid-template-columns:minmax(0,1fr);gap:28px}}
+.seg{display:flex;flex-wrap:wrap;gap:4px;padding:4px;background:#e1e6e2;border-radius:9px;margin-bottom:8px;max-width:100%}
+.seg a{padding:8px 13px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;color:var(--ink-2)}
+.seg a[aria-current]{background:var(--sheet);color:var(--ink);box-shadow:0 1px 0 rgba(0,0,0,.08)}
+.seg a.new{color:var(--ink)}
+.phone{display:grid;grid-template-columns:130px 1fr;gap:10px}
+.priv{display:flex;gap:10px;align-items:flex-start;margin-top:20px;padding:12px 14px;background:var(--signal-wash);border-radius:var(--r);font-size:15px;color:#0b5a2b;font-weight:550}
+.priv svg{flex:none;margin-top:2px}
+.proof{position:relative;background:var(--sheet);padding:44px 44px 30px;border-radius:2px;box-shadow:0 1px 0 var(--rule),0 24px 48px -28px rgba(20,40,30,.35)}
+.proof img,.proof svg.qr{display:block;width:100%;max-width:380px;aspect-ratio:1;margin:0 auto}
+.stamp{position:absolute;top:22px;right:-10px;transform:rotate(6deg);background:var(--signal);color:#fff;font-weight:750;font-size:14px;line-height:1.2;padding:9px 13px;border-radius:4px}
+.inside{margin:12px 0 0;font-size:15px;color:var(--ink-2);text-align:center;overflow-wrap:anywhere}
+.dl{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:22px}
+.slug{margin-top:14px;font-size:14px;color:var(--ink-3);text-align:center}
+@media(max-width:520px){.proof{padding:36px 22px 22px}.stamp{right:8px;top:8px}.dl{grid-template-columns:1fr}.phone{grid-template-columns:110px 1fr}}
+section{padding:56px 0;border-top:1.5px solid var(--rule)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:20px}
+.tile{background:var(--sheet);border-radius:var(--r);padding:20px;text-decoration:none;display:block}
+.tile span{color:var(--ink-3);font-size:14px}
+details{border-bottom:1.5px solid var(--rule);padding:16px 0;max-width:760px}summary{cursor:pointer;font-weight:650;font-size:18px}details p{margin:10px 0 0;color:var(--ink-2)}
+.foot{padding:36px 24px 48px;color:var(--ink-3);font-size:14px;border-top:1.5px solid var(--rule)}
+.foot .cols{display:flex;flex-wrap:wrap;gap:10px 22px;margin-bottom:14px}.foot a{text-decoration:none}
+</style></head><body>
+<header class="wrap top"><a class="mark" href="#"><i></i>QRs That Last</a><nav><a href="#">Pricing</a><a href="#">Our promise</a></nav></header>
+<main>
+<div class="wrap"><div class="hero">
+<div>
+<h1>WhatsApp QR code generator</h1>
+<p class="lead">Make a QR code that opens a WhatsApp chat with your number, with an optional first message. Free, no sign-up, and it never expires.</p>
+<nav class="seg" aria-label="QR code type" data-note="New types: WhatsApp, Contact, Event, Location, App store"><a href="#">Link</a><a href="#">WiFi</a><a href="#">Text</a><a href="#">Email</a><a href="#">Phone</a><a href="#">SMS</a><a class="new" href="#" aria-current="page">WhatsApp</a><a class="new" href="#">Contact</a><a class="new" href="#">Event</a><a class="new" href="#">Location</a><a class="new" href="#">App store</a></nav>
+<form onsubmit="return false">
+<label for="cc">WhatsApp number</label>
+<div class="phone"><select id="cc" aria-label="Country code"><option>🇬🇧 +44</option><option>🇺🇸 +1</option></select><input id="n" type="tel" value="7700 900123"></div>
+<label for="m">First message (optional)</label>
+<textarea id="m" rows="3">Hi! I saw your flyer and would like to book a table.</textarea>
+<div class="priv" data-note="Privacy promise: built in the browser"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>Made in your browser. Your number and message are never sent to us or put in a web address.</span></div>
+</form>
+</div>
+<div>
+<div class="proof"><span class="stamp">Static code.<br>Works forever.</span>
+<svg class="qr" viewBox="0 0 29 29" shape-rendering="crispEdges" role="img" aria-label="Preview of your WhatsApp QR code"><rect width="29" height="29" fill="#fff"/><g fill="#000"><path d="M1 1h7v7H1zM21 1h7v7h-7zM1 21h7v7H1z"/></g><g fill="#fff"><path d="M2 2h5v5H2zM22 2h5v5h-5zM2 22h5v5H2z"/></g><g fill="#000"><path d="M3 3h3v3H3zM23 3h3v3h-3zM3 23h3v3H3z"/><path d="M10 1h2v1h-2zM13 1h3v2h-3zM17 2h2v2h-2zM10 4h1v3h-1zM12 4h3v1h-3zM16 5h3v2h-3zM9 8h2v1H9zM13 7h1v3h-1zM18 8h2v2h-2zM1 10h3v1H1zM5 10h2v2H5zM9 10h3v2H9zM15 10h2v3h-2zM19 11h3v1h-3zM23 10h4v2h-4zM2 13h1v3H2zM4 13h3v1H4zM8 13h2v2H8zM12 13h2v1h-2zM18 14h2v2h-2zM22 13h2v3h-2zM26 14h2v2h-2zM1 17h2v2H1zM5 16h2v3H5zM9 16h3v1H9zM13 15h1v4h-1zM16 17h3v2h-3zM21 17h2v1h-2zM25 17h3v2h-3zM9 19h2v2H9zM12 20h3v1h-3zM17 20h2v3h-2zM21 20h3v2h-3zM26 21h2v2h-2zM10 22h2v3h-2zM13 23h3v2h-3zM20 24h3v1h-3zM24 23h1v4h-1zM26 25h2v2h-2zM10 26h3v2h-3zM15 26h2v2h-2zM19 26h3v2h-3z"/></g></svg>
+<p class="inside">Opens a chat with +44 7700 900123, message pre-filled</p>
+<div class="dl"><span class="btn">Download PNG</span><span class="btn ghost">SVG for print</span></div>
+<p class="slug">No sign-up, no watermark, free for commercial use.</p>
+</div></div>
+</div></div>
+<section><div class="wrap"><h2>More QR codes people look for</h2>
+<div class="tiles"><a class="tile" href="#"><h3>Contact card (vCard)</h3><span>Save a name, number and email in one scan.</span></a><a class="tile" href="#"><h3>Calendar event</h3><span>Add a date and place to a calendar.</span></a><a class="tile" href="#"><h3>Location</h3><span>Open a spot in the map app.</span></a><a class="tile" href="#"><h3>App store link</h3><span>One code for iPhone and Android.</span></a></div></div></section>
+<section><div class="wrap"><h2>Questions</h2>
+<details><summary>Does a WhatsApp QR code expire?</summary><p>No. The chat link is stored inside the pattern, so there is nothing for us to switch off.</p></details>
+<details><summary>Is my phone number stored anywhere?</summary><p>No. The code is drawn in your browser. Your number is never sent to our server.</p></details>
+<details><summary>Does it work with WhatsApp Business?</summary><p>Yes. Use your Business number; scanning opens a chat with it.</p></details></div></section>
+</main>
+<footer class="wrap foot"><div class="cols"><a href="#">QR code generator</a><a href="#">WiFi QR code</a><a href="#">WhatsApp QR code</a><a href="#">Contact card QR code</a><a href="#">Event QR code</a><a href="#">Location QR code</a><a href="#">App store QR code</a></div><p>© 2026 QRs That Last. Static QR codes made here keep working even if this website disappears.</p></footer>
+</body></html>
