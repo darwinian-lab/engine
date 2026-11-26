@@ -258,6 +258,9 @@ export default {
       setCookies.push(`dw_vid=${visitor}; Path=/; Max-Age=${YEAR}; Secure; HttpOnly; SameSite=Lax`);
     }
     let arm = st.arms.find((a) => a.arm_id === c.dw_arm);
+    // The owner previewing from the lab may pin any running arm, including nursery mutants, finalists and the
+    // rollback guard that real visitors never get.
+    if (!arm && c.dw_arm && (await isOwner(req, env))) arm = st.all.find((a) => a.arm_id === c.dw_arm);
     if (!arm) {
       arm =
         chooseArm(st.arms, st.stats, segment, { controlShare: st.cfg?.controlShare ?? 0.1 }) ?? st.arms[0];
