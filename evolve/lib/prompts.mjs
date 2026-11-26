@@ -116,7 +116,8 @@ ${charter}
 ${mutation}
 
 === DIFF (may be truncated) ===
-${diff.slice(0, 60000)}
+${diff.length > 150000 ? `${diff.slice(0, 150000)}
+[... diff truncated: ${diff.length - 150000} more characters. Judge only what you can see; do not block on what you could not see.]` : diff}
 
 Reject if ANY of these is true: a dark pattern; misleading or hidden pricing; fake social proof or fake numbers;
 code that triggers fitness/tracking endpoints automatically or without a genuine user action; edits to protected

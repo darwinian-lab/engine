@@ -120,7 +120,7 @@ export async function snapshot(env: Env, sp: string) {
     q("SELECT ts, kind, arm_id, detail FROM journal WHERE species = ? OR species IS NULL ORDER BY ts DESC LIMIT 300", sp),
     safe(q("SELECT id, arm_id, kind, page, viewport, width, height, size, created_at FROM media WHERE species = ? ORDER BY id", sp), []),
     safe(q("SELECT ts, arm_id, pbest, trials, successes FROM pb_history WHERE species = ? AND ts > ? ORDER BY ts", sp, Date.now() - 60 * DAY), []),
-    safe(q("SELECT id, ts, arm_id, persona, device, outcome, stage_hit, done, rating, minutes, report FROM sim_runs WHERE species = ? AND ts > ? ORDER BY ts DESC LIMIT 400", sp, Date.now() - 30 * DAY), []),
+    safe(q("SELECT id, ts, arm_id, persona, device, outcome, stage_hit, done, rating, minutes, report, agent FROM sim_runs WHERE species = ? AND ts > ? ORDER BY ts DESC LIMIT 600", sp, Date.now() - 30 * DAY), []),
     safe(env.DB.prepare("SELECT json, updated_at FROM backlog WHERE species = ?").bind(sp).first<any>(), null),
     safe(q("SELECT * FROM growth_items WHERE species = ? ORDER BY created_at DESC LIMIT 200", sp), []),
   ]);
@@ -142,8 +142,10 @@ export async function snapshot(env: Env, sp: string) {
   // Selection evidence = real visitors + simulated sessions (as the evolve loop weighs them, weight 1 until real traffic grows).
   const since14 = Date.now() - 14 * DAY;
   const simAgg: Record<string, { trials: number; successes: number; rated: number; ratingSum: number }> = {};
+  // Same rule as selection: only sessions from the current simulator (the newest session's) count.
+  const simAgent = (simRows as any[])[0]?.agent ?? null;
   for (const r of simRows as any[]) {
-    if (r.outcome === "error") continue;
+    if (r.outcome === "error" || (simAgent && r.agent !== simAgent)) continue;
     const a = (simAgg[r.arm_id] ??= { trials: 0, successes: 0, rated: 0, ratingSum: 0 });
     if (r.ts > since14) {
       a.trials++;

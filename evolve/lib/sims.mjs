@@ -156,8 +156,8 @@ export async function runSession({ cfg, db, sp, stageEvent, arm, persona }) {
     report: { events: names, phases },
   };
   await db.run(
-    "INSERT INTO sim_runs (ts, species, arm_id, persona, device, outcome, stage_hit, done, rating, minutes, report) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-    [row.ts, row.species, row.arm_id, row.persona, row.device, row.outcome, row.stage_hit, row.done, row.rating, row.minutes, JSON.stringify(row.report).slice(0, 60000)],
+    "INSERT INTO sim_runs (ts, species, arm_id, persona, device, outcome, stage_hit, done, rating, minutes, report, agent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    [row.ts, row.species, row.arm_id, row.persona, row.device, row.outcome, row.stage_hit, row.done, row.rating, row.minutes, JSON.stringify(row.report).slice(0, 60000), s.agent ?? "claude"],
   );
   return row;
 }
@@ -176,7 +176,15 @@ export function allocate({ arms, simStats, budget, minSims, combined, rng = Math
     let u = 0; while (u === 0) u = rng();
     return m + Math.sqrt(v) * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rng());
   };
+  // The champion is the yardstick: it gets every 4th session so it keeps being measured alongside the newcomers
+  // (otherwise Thompson sampling starves it and newcomers are compared with its old numbers).
+  const champ = arms.find((a) => a.status === "champion");
   for (let k = 0; k < budget; k++) {
+    if (champ && k % 4 === 0) {
+      count[champ.arm_id]++;
+      plan.push({ arm: champ });
+      continue;
+    }
     const needy = arms.filter((a) => count[a.arm_id] < minSims && !(a.status === "control" && count[a.arm_id] >= Math.ceil(minSims / 2)));
     let arm;
     if (needy.length) arm = needy.sort((x, y) => count[x.arm_id] - count[y.arm_id])[0];
@@ -233,10 +241,11 @@ export async function runSims({ cfg, db, sp, stageEvent, arms, personas, budget,
 }
 
 /** Sim stats per arm over the last 14 days (errors excluded). */
-export async function simStatsFor(db, spId) {
+export async function simStatsFor(db, spId, agent = null) {
+  // Only sessions from the current simulator count (see migrations/0007_sim_agent.sql).
   const rows = await db.all(
-    "SELECT arm_id, COUNT(*) t, SUM(outcome='success') s FROM sim_runs WHERE species=? AND ts>? AND outcome!='error' GROUP BY arm_id",
-    [spId, Date.now() - 14 * 86400_000],
+    `SELECT arm_id, COUNT(*) t, SUM(outcome='success') s FROM sim_runs WHERE species=? AND ts>? AND outcome!='error'${agent ? " AND agent=?" : ""} GROUP BY arm_id`,
+    [spId, Date.now() - 14 * 86400_000, ...(agent ? [agent] : [])],
   );
   return Object.fromEntries(rows.map((r) => [r.arm_id, { trials: r.t, successes: r.s ?? 0 }]));
 }

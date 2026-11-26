@@ -18,6 +18,7 @@ import { pickRevivals, isRevivable } from "./lib/seeds.mjs";
 import { ensureLabels, listIssues, backlogText, applyCuration, createIssue, comment, closeIssue, parseImplements } from "./lib/issues.mjs";
 import { ENGINE_DIR } from "./lib/config.mjs";
 import { makePipeline } from "./pipeline.mjs";
+import { closePR } from "./lib/ghpr.mjs";
 import { run, must, expand, rid, log, lock, extractJson, readJson, stripHtml, limitHit } from "./lib/util.mjs";
 import { capture, storeMedia } from "./lib/shots.mjs";
 
@@ -481,7 +482,13 @@ async function cycle(sp) {
   const nurseryNow = arms.filter((a) => a.status === "nursery").length;
   const toSpawn = SPAWN_OVERRIDE != null ? SPAWN_OVERRIDE : SIM_ONLY ? 0 : DRY ? Math.min(1, sel.spawnPerCycle) : Math.max(0, Math.min(sel.spawnPerCycle, sel.nurserySize - nurseryNow));
   const dead = await db.all("SELECT * FROM arms WHERE species=? AND status IN ('retired','stillborn','dead') AND mutation IS NOT NULL", [sp.id]);
-  const revivals = toSpawn ? pickRevivals({ dead, alive: arms, gen: st.generation, opts: cfg.seeds ?? {} }) : [];
+  // Winners that couldn't be merged are owed a re-implementation before anything else from the seed bank.
+  const revivedRoots = new Set(arms.map((a) => a.revived_from).filter(Boolean));
+  const owed = dead
+    .filter((a) => String(a.cause ?? "").startsWith("won, but could not be merged") && !revivedRoots.has(a.revived_from ?? a.arm_id))
+    .map((a) => ({ root: a.revived_from ?? a.arm_id, last: a, deaths: 0, dg: 0, score: 1 }));
+  const revivals = toSpawn ? [...owed, ...pickRevivals({ dead, alive: arms, gen: st.generation, opts: cfg.seeds ?? {} }).filter((r) => !owed.some((o) => o.root === r.root))] : [];
+  let rvIdx = 0;
   const jobs = [];
   // Interrupted mutants from earlier cycles go first and use up spawn slots.
   const usePRs = (argv("--pipeline") ?? cfg.pipeline ?? "prs") === "prs";
@@ -499,7 +506,7 @@ async function cycle(sp) {
     }
   }
   for (let i = jobs.length; i < toSpawn; i++) {
-    const rv = revivals[i] ?? null;
+    const rv = revivals[rvIdx++] ?? null;
     let revival = null;
     if (rv) {
       const diff = rv.last.git_ref ? (await run("git", ["diff", `${rv.last.git_ref}^`, rv.last.git_ref], { cwd: repo })).out : "";
@@ -546,7 +553,7 @@ async function cycle(sp) {
   // 2. Simulate: personas use every competing arm through the real router.
   arms = await alive();
   const competing = arms.filter((a) => ["champion", "live", "nursery", "control"].includes(a.status));
-  let sims = await simStatsFor(db, sp.id);
+  let sims = await simStatsFor(db, sp.id, cfg.sims?.agent);
   let real = await realStats();
   const evolving = competing.filter((a) => a.status !== "control");
   let pre = decideNursery({ arms: evolving, real, sims, weeklyReal: weekly, opts: sel });
@@ -562,7 +569,7 @@ async function cycle(sp) {
 
   if (SIM_ONLY || NO_SIMS) return;
   // 3. Select: promote, graduate, retire.
-  sims = await simStatsFor(db, sp.id);
+  sims = await simStatsFor(db, sp.id, cfg.sims?.agent);
   real = await realStats();
   arms = await alive();
   const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control"), real, sims, weeklyReal: weekly, opts: sel });
@@ -593,19 +600,7 @@ async function cycle(sp) {
     for (const id of dec.promotions ?? []) {
       const winner = arms.find((a) => a.arm_id === id);
       if (!winner) continue;
-      let outcome;
-      if (winner.prs) {
-        outcome = await pipe.promotePR(sp, repo, species, st, winner).catch((e) => (log(`promotion failed: ${e.message}`), "failed"));
-      } else {
-        // Legacy (pre-PR) arm: merge its branch into main normally.
-        await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
-        await must("git", ["checkout", "-q", "main"], { cwd: repo });
-        await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
-        const merged = await run("git", ["-c", "user.name=darwinian", "-c", "user.email=evolve@darwinian.local", "merge", "--no-ff", "--no-edit", "-m", `Promote ${winner.arm_id}`, winner.git_ref], { cwd: repo });
-        if (merged.code !== 0) await run("git", ["merge", "--abort"], { cwd: repo });
-        else await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
-        outcome = merged.code === 0 ? "merged" : "failed";
-      }
+      const outcome = await pipe.promotePR(sp, repo, species, st, winner).catch((e) => (log(`promotion failed: ${e.message}`), ghNotice(`${sp.id} promotion`, `${winner.arm_id}: ${e.message}`), "failed"));
       if (outcome === "finalist") {
         await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.9, revivable=0 WHERE species=? AND arm_id=?", [now(), `won, then continued as finalist ${winner.arm_id}r rebased onto main`, st.generation, sp.id, winner.arm_id]);
         await journal(sp.id, "finalist", `${winner.arm_id}r`, `${winner.arm_id} beat the champion (P=${dec.pbeat[id].toFixed(3)}) but main ${newChampion ? `now includes ${newChampion}` : "moved since it was bred"}; its change was replayed onto main and must confirm itself before merging`);
@@ -613,7 +608,12 @@ async function cycle(sp) {
         continue;
       }
       if (outcome === "failed") {
-        await journal(sp.id, "note", winner.arm_id, "beat the champion, but could not be merged or replayed onto main cleanly; it stays a challenger");
+        // Never drop a winner over merge trouble: retire this copy and re-implement the same idea on today's main
+        // (the seed bank gives it the next spawn slot).
+        await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.95, revivable=1 WHERE species=? AND arm_id=?", [now(), "won, but could not be merged onto main; re-implementing the idea on the current main", st.generation, sp.id, winner.arm_id]);
+        await journal(sp.id, "note", winner.arm_id, "beat the champion, but its code could not be merged or replayed onto main; the idea will be re-implemented on the current main next");
+        await deleteWorker(`sp-${sp.id}-${winner.arm_id}`);
+        if (winner.prs) for (const p of JSON.parse(winner.prs)) await closePR(repoSlug, p.number, "Won selection, but couldn't be merged onto the current main. The idea is being re-implemented on top of main.").catch(() => {});
         continue;
       }
       // Merged: it becomes the champion (serving main, which keeps everything merged before it).
@@ -672,7 +672,7 @@ async function crossoverPair(sp, arms, champion, real, weekly) {
   const sel = { ...NURSERY_DEFAULTS, ...cfg.selection, ...(cfg.nursery ?? {}) };
   const pool = arms.filter((a) => (a.status === "live" || a.status === "nursery") && a.prs && a.git_ref);
   if (pool.length < 2 || !champion) return null;
-  const d = decideNursery({ arms: [champion, ...pool], real, sims: await simStatsFor(db, sp.id), weeklyReal: weekly, opts: sel });
+  const d = decideNursery({ arms: [champion, ...pool], real, sims: await simStatsFor(db, sp.id, cfg.sims?.agent), weeklyReal: weekly, opts: sel });
   const judged = (id) => (d.combined[id]?.sims.trials ?? 0) >= sel.minSims || (d.combined[id]?.real.trials ?? 0) >= sel.minTrials;
   const good = pool.filter((a) => judged(a.arm_id) && (d.pbeat[a.arm_id] ?? 0) >= (cfg.crossover?.minPBeat ?? 0.5)).sort((x, y) => d.pbeat[y.arm_id] - d.pbeat[x.arm_id]);
   const tried = (await db.all("SELECT arm_id, crossed_from FROM arms WHERE species=? AND crossed_from IS NOT NULL", [sp.id])).map((r) => ({ id: r.arm_id, from: r.crossed_from.split(",") }));

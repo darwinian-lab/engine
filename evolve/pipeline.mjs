@@ -380,8 +380,8 @@ export function makePipeline(d) {
    */
   async function promotePR(sp, repo, species, st, winner) {
     const repoSlug = `${cfg.github.org}/${sp.repo}`;
-    const prs = JSON.parse(winner.prs);
-    const head = prs.at(-1).head;
+    const prs = winner.prs ? JSON.parse(winner.prs) : []; // legacy (pre-PR) arms have none
+    const title = prs.at(-1)?.title ?? String(winner.hypothesis ?? winner.arm_id).split(":")[0].slice(0, 100);
     await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
     // Fresh = main hasn't changed the product since this mutant was bred. Engine-owned files (LESSONS.md, the e2e
     // harness, capabilities...) change on main every cycle; those alone must not force a finalist round, or a winner
@@ -392,14 +392,25 @@ export function makePipeline(d) {
     if (fresh) {
       await must("git", ["checkout", "-q", "main"], { cwd: repo });
       await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
-      const m = await run("git", [...GIT_ID, "merge", "--no-ff", "--no-edit", "-m", `Promote ${winner.arm_id}: ${prs.map((p) => `#${p.number}`).join(", ")}`, winner.git_ref], { cwd: repo });
+      const m = await run("git", [...GIT_ID, "merge", "--no-ff", "--no-edit", "-m", `Promote ${winner.arm_id}${prs.length ? `: ${prs.map((p) => `#${p.number}`).join(", ")}` : ""}`, winner.git_ref], { cwd: repo });
       if (m.code !== 0) {
-        await run("git", ["merge", "--abort"], { cwd: repo });
-        return "failed";
+        // Conflicts only in engine-owned files: main's version wins. Anything else: replay as a finalist below.
+        const conflicted = (await run("git", ["diff", "--name-only", "--diff-filter=U"], { cwd: repo })).out.split("\n").filter(Boolean);
+        if (conflicted.length && conflicted.every(isProtected)) {
+          await must("git", ["checkout", "--ours", "--", ...conflicted], { cwd: repo });
+          await must("git", ["add", "--", ...conflicted], { cwd: repo });
+          await must("git", [...GIT_ID, "commit", "-q", "--no-edit"], { cwd: repo });
+        } else {
+          await run("git", ["merge", "--abort"], { cwd: repo });
+          return promoteAsFinalist();
+        }
       }
       await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
       return "merged";
     }
+    return promoteAsFinalist();
+
+    async function promoteAsFinalist() {
     // Stale: rebase onto main and send the combination back to the nursery as a finalist.
     const finalist = `${winner.arm_id}r`;
     const wt = path.join(cfg.workdir, "wt", `${sp.id}-${finalist}`);
@@ -416,11 +427,15 @@ export function makePipeline(d) {
           return "failed";
         }
       }
-      fs.symlinkSync(path.join(repo, "node_modules"), path.join(wt, "node_modules"));
-      const g = await gate(wt, base, species, { requireMutationFile: false });
+      if (!fs.existsSync(path.join(wt, "node_modules"))) fs.symlinkSync(path.join(repo, "node_modules"), path.join(wt, "node_modules"));
+      let g = await gate(wt, base, species, { requireMutationFile: false });
+      for (let i = 0; !g.ok && i < 2; i++) {
+        await agent({ label: `${sp.id}/${finalist} repair ${i + 1}`, cwd: wt, prompt: `This branch is a winning change replayed onto the latest main. Its checks now fail:\n\n${String(g.failure ?? "").slice(0, 6000)}\n\nFix it with new commits so both main's behaviour and this branch's change work. Run npm test, npm run typecheck and npm run e2e. Never modify protected files.`, model: cfg.models.repair ?? "sonnet", tools: CODE_TOOLS, browser: true, minutes: 40 });
+        g = await gate(wt, base, species, { requireMutationFile: false });
+      }
       if (!g.ok) return "failed";
       await gitLock(() => must("git", ["push", "-q", "-f", "origin", `${branch}:refs/heads/${branch}`], { cwd: wt }));
-      const { url } = await openPR(repoSlug, { base: "main", head: branch, title: `${prs.at(-1).title} (rebased onto main)`, body: `Finalist: \`${winner.arm_id}\` won selection, but main moved since it was bred. This is the same change rebased onto main. It must confirm itself against the current champion before it is merged.\n\nOriginal: ${prs.map((p) => p.url).join(", ")}` });
+      const { url } = await openPR(repoSlug, { base: "main", head: branch, title: `${title} (rebased onto main)`, body: `Finalist: \`${winner.arm_id}\` won selection, but main moved since it was bred. This is the same change rebased onto main. It must confirm itself against the current champion before it is merged.${prs.length ? `\n\nOriginal: ${prs.map((p) => p.url).join(", ")}` : ""}` });
       const headSha = (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim();
       const tag = `fossil/${sp.id}/${finalist}`;
       await gitLock(async () => {
@@ -429,7 +444,7 @@ export function makePipeline(d) {
       });
       const { origin } = await deployArm(sp, wt, finalist);
       await photograph(sp, finalist, origin);
-      const fprs = [{ number: Number(url.split("/pull/")[1] ?? 0), url, branch, base: "main", head: headSha, title: `${prs.at(-1).title} (rebased)` }];
+      const fprs = [{ number: Number(url.split("/pull/")[1] ?? 0), url, branch, base: "main", head: headSha, title: `${title} (rebased)` }];
       await db.run(
         `INSERT INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at, mutation, size, diffstat, revivable, issue, prs, work_item, finalist_of, shot_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -439,6 +454,7 @@ export function makePipeline(d) {
       return "finalist";
     } finally {
       await gitLock(() => run("git", ["worktree", "remove", "--force", wt], { cwd: repo }));
+    }
     }
   }
 
