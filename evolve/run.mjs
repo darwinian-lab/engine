@@ -15,7 +15,7 @@ import { gate } from "./lib/gates.mjs";
 import { mutationPrompt, repairPrompt, auditPrompt, auditFixPrompt, curatorPrompt, ideationPrompt } from "./lib/prompts.mjs";
 import { loadPersonas, runSims, simStatsFor, simDigest, qualityFor, pairStatsFor, moneyStatsFor } from "./lib/sims.mjs";
 import { pickRevivals, isRevivable } from "./lib/seeds.mjs";
-import { ensureLabels, listIssues, backlogText, applyCuration, createIssue, comment, closeIssue, parseImplements } from "./lib/issues.mjs";
+import { ensureLabels, listIssues, backlogText, applyCuration, createIssue, comment, closeIssue, parseImplements, addLabel, betterPedigree } from "./lib/issues.mjs";
 import { ENGINE_DIR } from "./lib/config.mjs";
 import { makePipeline } from "./pipeline.mjs";
 import { closePR } from "./lib/ghpr.mjs";
@@ -466,8 +466,14 @@ async function cycle(sp) {
   try {
     await ensureLabels(repoSlug);
     if (wanted.length) {
-      const all = JSON.parse((await run("gh", ["issue", "list", "-R", repoSlug, "--state", "all", "--limit", "300", "--json", "title"], { env: { GH_TOKEN: process.env.DW_GH_TOKEN ?? "" } })).out || "[]");
-      for (const w of wanted) if (!all.some((i) => i.title === w.title)) await createIssue(repoSlug, { title: w.title, body: w.body });
+      const all = JSON.parse((await run("gh", ["issue", "list", "-R", repoSlug, "--state", "all", "--limit", "300", "--json", "title,number,labels"], { env: { GH_TOKEN: process.env.DW_GH_TOKEN ?? "" } })).out || "[]");
+      for (const w of wanted) {
+        // "source": "discussion" | "user" | "behavior" ... (omitted = the owner's own request, unlabeled).
+        const label = w.source && w.source !== "owner" ? `from:${w.source}` : null;
+        const found = all.find((i) => i.title === w.title);
+        if (!found) await createIssue(repoSlug, { title: w.title, body: w.body, label });
+        else if (label && !(found.labels ?? []).some((l) => l.name === label)) await addLabel(repoSlug, found.number, label).catch((e) => log(`label: ${e.message}`));
+      }
     }
     issues = await listIssues(repoSlug);
     await db.run("INSERT INTO backlog (species, json, updated_at) VALUES (?,?,?) ON CONFLICT(species) DO UPDATE SET json=excluded.json, updated_at=excluded.updated_at",
@@ -599,7 +605,8 @@ async function cycle(sp) {
   const champRow = arms.find((a) => a.status === "champion");
   const pairs = champRow ? await pairStatsFor(db, sp.id, champRow.arm_id) : {};
   const money = await moneyStatsFor(db, sp.id).catch((e) => (log(`[${sp.id}] money stats unavailable: ${e.message}`), {}));
-  const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control" && a.status !== "guard"), real, sims, quality, pairs, money, weeklyReal: weekly, opts: sel });
+  const pedigree = await pedigreesFor(sp, arms, issues).catch((e) => (log(`[${sp.id}] pedigree unavailable: ${e.message}`), {}));
+  const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control" && a.status !== "guard"), real, sims, quality, pairs, money, pedigree, weeklyReal: weekly, opts: sel });
   {
     const m = Object.entries(dec.cash ?? {}).filter(([, v]) => v.starts || v.buys || v.revenue);
     if (m.length) ghNotice(`${sp.id} money`, m.map(([id, v]) => `${id}: ${v.starts.toFixed(1)} checkout starts, ${v.buys.toFixed(1)} buys, $${v.revenue.toFixed(2)} real revenue`).join("; "));
@@ -740,6 +747,27 @@ async function cycle(sp) {
   await announce(sp);
   await probe(sp, species).catch((e) => log(`[${sp.id}] probe failed: ${e.message}`));
   if (rateLimited || simResults.rateLimited) throw new RateLimited("usage limit");
+}
+
+/**
+ * Where each arm's idea came from: the backlog issue it implements (by label), the better of a crossover's two
+ * parents, a revived seed's original, else "exploration". Stored once per arm, so it survives the issue closing.
+ */
+async function pedigreesFor(sp, arms, issues) {
+  const out = {};
+  const bySource = new Map(issues.filter((i) => i.number).map((i) => [i.number, i.source]));
+  const known = async (id) => out[id] ?? (await db.first("SELECT pedigree FROM arms WHERE species=? AND arm_id=?", [sp.id, id]))?.pedigree ?? null;
+  for (const a of arms) {
+    if (a.pedigree) { out[a.arm_id] = a.pedigree; continue; }
+    let p = null;
+    if (a.issue && bySource.has(a.issue)) p = bySource.get(a.issue);
+    else if (a.crossed_from) { const [x, y] = String(a.crossed_from).split(","); p = betterPedigree(await known(x), await known(y)); }
+    else if (a.revived_from) p = await known(a.revived_from);
+    if (!p && a.issue) continue; // issue not in the open list yet: decide next cycle rather than guess
+    out[a.arm_id] = p ?? "exploration";
+    if (a.status !== "control") await db.run("UPDATE arms SET pedigree=? WHERE species=? AND arm_id=?", [out[a.arm_id], sp.id, a.arm_id]).catch(() => {});
+  }
+  return out;
 }
 
 /** The two most promising PR mutants (by P(beats champion)) that have not been crossed with each other yet. */

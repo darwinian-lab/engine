@@ -1,6 +1,8 @@
 // The backlog: each species' own (private) GitHub issues. Fed by the owner, by simulated people
 // (problems they hit, things they wished for) and by an ideation agent. Mutations may pick an item.
-// Labels: from:sim, from:ideation (unlabeled = owner, highest priority), mutant:<arm> when being tried.
+// Labels say where an idea came from (its pedigree, which also sets how much proof a mutant built on it needs):
+// from:discussion (fleshed out with the owner), unlabeled (owner request), from:user (a real user asked),
+// from:behavior (seen in real visitors' behaviour), from:growth, from:sim, from:ideation.
 import { run, log, extractJson } from "./util.mjs";
 
 const env = () => ({ GH_TOKEN: process.env.DW_GH_TOKEN ?? process.env.GH_TOKEN ?? "" });
@@ -19,6 +21,9 @@ async function gh(args, input) {
 }
 
 const LABELS = [
+  ["from:discussion", "0e8a16", "Agreed in a discussion with the owner (highest trust)"],
+  ["from:user", "1d76db", "Requested by a real user"],
+  ["from:behavior", "5319e7", "Seen in real visitors' behaviour"],
   ["from:sim", "c5def5", "Reported by simulated users"],
   ["from:ideation", "d4c5f9", "Proposed by the ideation agent"],
   ["from:growth", "fbca04", "Acquisition: a page or change meant to bring real visitors"],
@@ -36,21 +41,34 @@ export async function listIssues(repo) {
     const labels = (i.labels ?? []).map((l) => l.name);
     const thumbs = (i.reactionGroups ?? []).find((g) => g.content === "THUMBS_UP")?.users?.totalCount ?? 0;
     const votes = 1 + thumbs + (i.comments ?? []).filter((c) => /^\+1\b/.test(c.body ?? "")).length;
-    const source = labels.includes("from:sim") ? "sim" : labels.includes("from:ideation") ? "ideation" : labels.includes("from:growth") ? "growth" : "owner";
+    const source = sourceOf(labels);
     return { number: i.number, title: i.title, body: (i.body ?? "").slice(0, 800), labels, votes, source, createdAt: i.createdAt };
   });
 }
 
-/** Owner requests first, then by votes. */
-export function rankIssues(issues) {
-  const w = { owner: 3, growth: 2, sim: 1, ideation: 1 };
-  return issues.slice().sort((a, b) => w[b.source] - w[a.source] || b.votes - a.votes || a.number - b.number);
+/** Pedigrees from most to least trusted. Unlabeled issues are the owner's own requests. */
+export const PEDIGREES = ["discussion", "owner", "user", "behavior", "growth", "sim", "ideation", "exploration"];
+export function sourceOf(labels = []) {
+  for (const p of PEDIGREES) if (labels.includes(`from:${p}`)) return p;
+  return "owner";
 }
+/** The more trusted of two pedigrees (a crossover inherits its better parent's). */
+export function betterPedigree(a, b) {
+  const ia = PEDIGREES.indexOf(a ?? "exploration"), ib = PEDIGREES.indexOf(b ?? "exploration");
+  return PEDIGREES[Math.min(ia < 0 ? 99 : ia, ib < 0 ? 99 : ib)] ?? "exploration";
+}
+
+/** Most trusted first, then by votes. */
+export function rankIssues(issues) {
+  const w = { discussion: 6, owner: 5, user: 4, behavior: 4, growth: 3, sim: 1, ideation: 1 };
+  return issues.slice().sort((a, b) => (w[b.source] ?? 0) - (w[a.source] ?? 0) || b.votes - a.votes || a.number - b.number);
+}
+const SOURCE_LABEL = { discussion: "AGREED WITH THE OWNER", owner: "OWNER REQUEST", user: "REAL USER REQUEST", behavior: "SEEN IN REAL VISITORS" };
 
 export function backlogText(issues, n = 10) {
   return rankIssues(issues)
     .slice(0, n)
-    .map((i) => `- ${i.number ? `#${i.number}` : "(not filed yet)"} (${i.source === "owner" ? "OWNER REQUEST" : `${i.source}, ${i.votes} vote${i.votes === 1 ? "" : "s"}`}) ${i.title}: ${i.body.replace(/\s+/g, " ").slice(0, 300)}`)
+    .map((i) => `- ${i.number ? `#${i.number}` : "(not filed yet)"} (${SOURCE_LABEL[i.source] ?? `${i.source}, ${i.votes} vote${i.votes === 1 ? "" : "s"}`}) ${i.title}: ${i.body.replace(/\s+/g, " ").slice(0, 300)}`)
     .join("\n");
 }
 
@@ -58,6 +76,10 @@ export async function createIssue(repo, { title, body, label }) {
   const out = await gh(["issue", "create", "-R", repo, "--title", title.slice(0, 120), "--body", body.slice(0, 6000), ...(label ? ["--label", label] : [])]);
   log(`backlog: created ${out.trim()}`);
   return out.trim();
+}
+
+export async function addLabel(repo, number, label) {
+  await gh(["issue", "edit", String(number), "-R", repo, "--add-label", label]);
 }
 
 export async function comment(repo, number, body) {
