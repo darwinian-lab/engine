@@ -524,7 +524,10 @@ async function cycle(sp) {
   const owed = dead
     .filter((a) => String(a.cause ?? "").startsWith("won, but could not be merged") && !revivedRoots.has(a.revived_from ?? a.arm_id))
     .map((a) => ({ root: a.revived_from ?? a.arm_id, last: a, deaths: 0, dg: 0, score: 1 }));
-  const revivals = toSpawn ? [...owed, ...pickRevivals({ dead, alive: arms, gen: st.generation, opts: cfg.seeds ?? {} }).filter((r) => !owed.some((o) => o.root === r.root))] : [];
+  // While ideas agreed with the owner (or the owner's own requests) wait in the backlog, build slots go to them:
+  // no seed-bank revivals (except winners owed a re-implementation) and crossovers only when there are spare slots.
+  const trustedWaiting = issues.filter((i) => i.source === "discussion" || i.source === "owner").length;
+  const revivals = toSpawn ? [...owed, ...(trustedWaiting ? [] : pickRevivals({ dead, alive: arms, gen: st.generation, opts: cfg.seeds ?? {} }).filter((r) => !owed.some((o) => o.root === r.root)))] : [];
   let rvIdx = 0;
   const jobs = [];
   // Interrupted mutants from earlier cycles go first and use up spawn slots.
@@ -535,7 +538,7 @@ async function cycle(sp) {
   }
   // Crossover: combine the two most promising mutants that haven't been combined yet, so unrelated improvements
   // that each beat the champion can be tested together instead of only against each other.
-  if (usePRs && cfg.crossover?.enabled !== false && jobs.length < toSpawn) {
+  if (usePRs && cfg.crossover?.enabled !== false && jobs.length < toSpawn && (!trustedWaiting || toSpawn - jobs.length >= 3)) {
     const pair = await crossoverPair(sp, arms, champion, await realStats(), weekly);
     if (pair) {
       jobs.push({ parent: champion, revival: null, crossover: pair });

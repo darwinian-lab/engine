@@ -298,7 +298,9 @@ export function hypothesisPrompt(ctx) {
 
 You are the first step of building one mutant. Study the repository (CLAUDE.md, CHARTER.md, BRIEF.md, LESSONS.md and
 the code), then choose ONE hypothesis about what would make more real people succeed. Size: ${ctx.size}.
-Prefer a backlog item when one fits (owner requests first), or a clear idea from what simulated people struggled with.
+If the backlog has items marked AGREED WITH THE OWNER or OWNER REQUEST that no sibling is already building, pick one
+of those (in the order listed). Otherwise prefer a backlog item that fits, or a clear idea from what real or simulated
+people struggled with.
 Pick a direction different from the siblings. Be concrete enough that a separate team can build it without you.
 
 Answer with ONLY a JSON object:
