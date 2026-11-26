@@ -116,9 +116,16 @@ export const NURSERY_DEFAULTS = {
   simFadeAt: 50, // ...shrinking as real weekly visitors grow (weight / (1 + weekly/simFadeAt))
   minSims: 6, // sessions before an arm can be judged on simulations
   minTrials: 100, // real visitors before an arm can be judged on real traffic alone
-  promoteAt: 0.8, // floor: P(beats champion) needed before expected loss is even considered
-  maxLoss: 0.005, // promote when switching would cost at most this much success rate if we're wrong
-  killAt: 0.1, // P(beats champion) below which a judged arm dies
+  // Promotion = "not worse" with enough evidence (see decideNursery).
+  minSimsPromote: 10, // simulated sessions before an arm can be merged
+  minPairs: 2, // side-by-side comparisons with the champion before an arm can be merged
+  regressMargin: 0.05, // a regression means a success rate more than 5 points below the champion's
+  maxRegress: 0.25, // merge only if P(regression) is below this (small samples can't do much better)
+  scoreMargin: 3, // experience-score points that count as "worse"
+  maxQualityRegress: 0.2, // merge only if P(score more than scoreMargin below) is below this
+  minPairPref: 0.4, // merge only if side-by-side preference for it is at least this (0.5 = even)
+  killRegress: 0.9, // die when P(regression) on success or score exceeds this
+  killAt: 0.1, // (legacy) P(beats champion) below which a judged arm dies
   graduateAt: 0.5, // P(beats champion) for a nursery arm to get real traffic
   fieldSize: 2, // live arms competing for real traffic besides champion and control
   nurserySize: 6, // arms judged by simulated people only
@@ -133,7 +140,31 @@ export const NURSERY_DEFAULTS = {
  * real, sims: {arm_id: {trials, successes}}
  * Returns {promote, retire:[{arm_id,cause,score}], graduate:[arm_id], spawn, pb, pbeat, combined, lambda}
  */
-export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), opts = {} }) {
+/** P(a's success rate is more than `margin` below b's): the chance that switching to a is a real regression. */
+export function probRegress(a, b, margin, draws = 4000, rng = Math.random) {
+  let n = 0;
+  for (let i = 0; i < draws; i++) {
+    const x = beta(1 + a.successes, 1 + a.trials - a.successes, rng);
+    const y = beta(1 + b.successes, 1 + b.trials - b.successes, rng);
+    if (x < y - margin) n++;
+  }
+  return n / draws;
+}
+
+/** Normal-approximation P(quality of a is more than `margin` points below b). */
+function qualityRegress(qa, qb, margin) {
+  if (!qa || !qb || qa.n < 3 || qb.n < 3) return null;
+  const d = qa.mean - qb.mean, se = Math.sqrt(qa.se ** 2 + qb.se ** 2) || 1;
+  const z = (-margin - d) / se;
+  return 0.5 * (1 + erf(z / Math.SQRT2));
+}
+function erf(x) {
+  const t = 1 / (1 + 0.3275911 * Math.abs(x));
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return x >= 0 ? y : -y;
+}
+
+export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, weeklyReal, now = Date.now(), opts = {} }) {
   const o = { ...NURSERY_DEFAULTS, ...opts };
   const lambda = o.simWeight / (1 + weeklyReal / o.simFadeAt);
   const combined = {};
@@ -153,13 +184,31 @@ export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), 
   const mean = (id) => (combined[id].successes + 1) / (combined[id].trials + 2);
   const loss = {};
 
-  // Every arm that clearly beats the champion is promoted, best first: unrelated improvements can all land.
+  // Natural selection, Darwin-style: a mutation spreads unless it is harmful. A challenger is merged when, with enough
+  // evidence, it is NOT worse than the champion on any of three signals: success rate (real + simulated), the
+  // simulated people's experience score, and blinded side-by-side preferences. Clear winners are merged first, and
+  // small, neutral improvements accumulate instead of waiting for proof of superiority.
+  const preg = {}, qreg = {}, pairPref = {}, gain = {};
+  const cid = champion?.arm_id;
+  for (const a of arms) {
+    if (!cid || a.arm_id === cid) continue;
+    preg[a.arm_id] = probRegress(combined[a.arm_id], combined[cid], o.regressMargin);
+    qreg[a.arm_id] = qualityRegress(quality[a.arm_id], quality[cid], o.scoreMargin);
+    const p = pairs[a.arm_id];
+    pairPref[a.arm_id] = p && p.n ? (1 + p.wins + 0.5 * p.ties) / (2 + p.n) : null;
+    gain[a.arm_id] = 100 * (mean(a.arm_id) - mean(cid)) + ((quality[a.arm_id]?.mean ?? 0) - (quality[cid]?.mean ?? 0)) + 20 * ((pairPref[a.arm_id] ?? 0.5) - 0.5);
+  }
+  const enough = (id) => ((sims[id]?.trials ?? 0) >= o.minSimsPromote || (real[id]?.trials ?? 0) >= o.minTrials) && (o.minPairs <= 0 || (pairs[id]?.n ?? 0) >= o.minPairs);
+  const notWorse = (id) =>
+    preg[id] < o.maxRegress &&
+    (qreg[id] == null || qreg[id] < o.maxQualityRegress) &&
+    (pairPref[id] == null || pairPref[id] >= o.minPairPref);
   let promotions = [];
   if (!anySuccess) return { promote: null, promotions: [], retire: [], graduate: [], spawn: Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - arms.filter((a) => a.status === "nursery").length)), pb, pbeat: {}, combined, lambda, blind: true };
   if (champion && judged(champion.arm_id)) {
-    // Promote when it is probably better AND a wrong switch would cost almost nothing (Bayesian expected loss).
-    const contenders = arms.filter((a) => a.status !== "champion" && judged(a.arm_id) && pbeat[a.arm_id] >= o.promoteAt && (loss[a.arm_id] = expectedLoss(combined[a.arm_id], combined[champion.arm_id])) <= o.maxLoss);
-    contenders.sort((x, y) => mean(y.arm_id) - mean(x.arm_id));
+    const contenders = arms.filter((a) => a.status !== "champion" && enough(a.arm_id) && notWorse(a.arm_id) && gain[a.arm_id] >= 0); // and, all signals together, it looks at least as good
+    for (const a of contenders) loss[a.arm_id] = expectedLoss(combined[a.arm_id], combined[cid]);
+    contenders.sort((x, y) => gain[y.arm_id] - gain[x.arm_id]);
     promotions = contenders.map((a) => a.arm_id);
   }
   const promote = promotions[0] ?? null;
@@ -171,8 +220,13 @@ export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), 
     const ageDays = (now - a.created_at) / 86400_000;
     const c = combined[a.arm_id];
     const ev = `${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real`;
-    if (judged(a.arm_id) && pbeat[a.arm_id] !== null && pbeat[a.arm_id] < o.killAt) {
-      retire.push({ arm_id: a.arm_id, cause: `lost to the champion: P(better)=${pbeat[a.arm_id].toFixed(2)} [${ev}]`, score: pbeat[a.arm_id] });
+    const clearlyWorse = judged(a.arm_id) && cid && (
+      preg[a.arm_id] > o.killRegress ||
+      (qreg[a.arm_id] != null && qreg[a.arm_id] > o.killRegress) ||
+      ((pairs[a.arm_id]?.n ?? 0) >= 4 && pairPref[a.arm_id] < 0.25));
+    if (clearlyWorse) {
+      const why = preg[a.arm_id] > o.killRegress ? `success rate clearly below the champion's (P(worse)=${preg[a.arm_id].toFixed(2)})` : qreg[a.arm_id] > o.killRegress ? `experience score clearly below the champion's (${quality[a.arm_id].mean.toFixed(0)} vs ${quality[cid].mean.toFixed(0)})` : `simulated people preferred the champion side by side (${pairs[a.arm_id].wins}-${pairs[a.arm_id].losses}-${pairs[a.arm_id].ties})`;
+      retire.push({ arm_id: a.arm_id, cause: `lost to the champion: ${why} [${ev}]`, score: pbeat[a.arm_id] ?? 0.1 });
     } else if (a.status === "nursery" && ageDays > o.nurseryMaxDays) {
       retire.push({ arm_id: a.arm_id, cause: `left the nursery without proving itself after ${ageDays.toFixed(0)} days [${ev}]`, score: pbeat[a.arm_id] ?? 0.3 });
     } else if (a.status === "live" && ageDays > o.fieldMaxDays && (pbeat[a.arm_id] ?? 0) < 0.5) {
@@ -188,5 +242,5 @@ export function decideNursery({ arms, real, sims, weeklyReal, now = Date.now(), 
     .map((a) => a.arm_id);
   const nurseryLeft = arms.filter((a) => a.status === "nursery" && !dying.has(a.arm_id) && !graduate.includes(a.arm_id) && !winning.has(a.arm_id)).length;
   const spawn = Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - nurseryLeft));
-  return { promote, promotions, retire, graduate, spawn, pb, pbeat, loss, combined, lambda };
+  return { promote, promotions, retire, graduate, spawn, pb, pbeat, loss, preg, qreg, pairPref, gain, combined, lambda };
 }

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { run, rid, log, extractJson, limitHit } from "./util.mjs";
-import { simPrompt } from "./prompts.mjs";
+import { simPrompt, pairPrompt } from "./prompts.mjs";
 import { claudeStream } from "./stream.mjs";
 
 export class SimRateLimited extends Error {}
@@ -63,31 +63,125 @@ function mcpArgs(s, profileDir, device, shimFile) {
 }
 
 async function agent(cfg, prompt, profileDir, device, workDir, label = "sim") {
+  return agentWith(cfg, prompt, [{ name: "browser", profileDir, device }], workDir, label);
+}
+
+/** Run one simulated person with one or more browsers (each its own MCP server and profile). */
+async function agentWith(cfg, prompt, servers, workDir, label = "sim") {
   const s = cfg.sims;
   const shimFile = path.join(workDir, "browser-shims.js");
   if (!fs.existsSync(shimFile)) fs.writeFileSync(shimFile, BROWSER_SHIMS);
-  const args = mcpArgs(s, profileDir, device, shimFile);
-  let cmd;
   if ((s.agent ?? "claude") === "codex") {
-    const toml = "[" + args.map((a) => JSON.stringify(a)).join(",") + "]";
     const out = path.join(workDir, `codex-${rid(6)}.txt`);
-    // Headless Codex cancels MCP calls that "need approval". Pre-approve only this sim's own browser server;
+    // Headless Codex cancels MCP calls that "need approval". Pre-approve only this sim's own browser servers;
     // the sandbox stays read-only.
-    cmd = ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only", "-c", 'approval_policy="never"',
-      "-c", 'mcp_servers.browser.default_tools_approval_mode="approve"',
-      ...(s.codexModel ? ["-m", s.codexModel] : []),
-      "-c", `mcp_servers.browser.command=${JSON.stringify(s.mcpCommand ?? "playwright-mcp")}`, "-c", `mcp_servers.browser.args=${toml}`,
-      "-c", "mcp_servers.browser.startup_timeout_sec=60", "-c", "mcp_servers.browser.tool_timeout_sec=120", "-o", out, prompt];
-    const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * 60_000, agent: true, echoPrefix: `[${label} codex]` });
+    const mcp = servers.flatMap(({ name, profileDir, device }) => {
+      const toml = "[" + mcpArgs(s, profileDir, device, shimFile).map((a) => JSON.stringify(a)).join(",") + "]";
+      return ["-c", `mcp_servers.${name}.default_tools_approval_mode="approve"`, "-c", `mcp_servers.${name}.command=${JSON.stringify(s.mcpCommand ?? "playwright-mcp")}`, "-c", `mcp_servers.${name}.args=${toml}`,
+        "-c", `mcp_servers.${name}.startup_timeout_sec=60`, "-c", `mcp_servers.${name}.tool_timeout_sec=120`];
+    });
+    const cmd = ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only", "-c", 'approval_policy="never"',
+      ...(s.codexModel ? ["-m", s.codexModel] : []), ...mcp, "-o", out, prompt];
+    const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * servers.length * 60_000, agent: true, echoPrefix: `[${label} codex]` });
     const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : r.out;
     return { ...r, text };
   }
   const mcpFile = path.join(workDir, `mcp-${rid(6)}.json`);
-  fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: { browser: { command: s.mcpCommand ?? "playwright-mcp", args } } }));
+  fs.writeFileSync(mcpFile, JSON.stringify({ mcpServers: Object.fromEntries(servers.map(({ name, profileDir, device }) => [name, { command: s.mcpCommand ?? "playwright-mcp", args: mcpArgs(s, profileDir, device, shimFile) }])) }));
   const cargs = ["-p", prompt, "--model", s.model ?? "haiku", "--mcp-config", mcpFile, "--strict-mcp-config",
-    "--allowedTools", "mcp__browser", "--max-turns", String(s.maxTurns ?? 45)];
-  const r = await claudeStream({ args: cargs, cwd: workDir, label, timeoutMs: (s.phaseMinutes ?? 10) * 60_000, transcriptDir: path.join(cfg.workdir, ".tmp", "transcripts") });
+    "--allowedTools", servers.map(({ name }) => `mcp__${name}`).join(","), "--max-turns", String((s.maxTurns ?? 45) * servers.length)];
+  const r = await claudeStream({ args: cargs, cwd: workDir, label, timeoutMs: (s.phaseMinutes ?? 10) * servers.length * 60_000, transcriptDir: path.join(cfg.workdir, ".tmp", "transcripts") });
   return { ...r, text: r.out };
+}
+
+/**
+ * Blinded side-by-side: one simulated person does the first task of their persona on a challenger and on a
+ * reference arm (order randomised, each in its own browser) and says which they'd rather use.
+ */
+export async function runPair({ cfg, db, sp, challenger, reference, persona }) {
+  const sid = rid(8);
+  const base = path.join(cfg.workdir, ".tmp", "sim", `${sp.id}-pair-${sid}`);
+  fs.mkdirSync(base, { recursive: true });
+  const token = simToken(cfg.routerKey);
+  const flip = Math.random() < 0.5;
+  const [first, second] = flip ? [reference, challenger] : [challenger, reference];
+  const device = persona.device;
+  const entry = (arm, n) => `https://${sp.domain}/_dw/sim?t=${token}&arm=${encodeURIComponent(arm.arm_id)}&vid=${sid}v${n}&next=/`;
+  const email = `${persona.id.split("-")[0]}${sid}+clerk_test@example.com`;
+  let j = null;
+  try {
+    const prompt = pairPrompt({ persona, task: persona.phases[0].task, device, url1: entry(first, 1), url2: entry(second, 2), email });
+    const r = await agentWith(cfg, prompt, [{ name: "site1", profileDir: path.join(base, "p1"), device }, { name: "site2", profileDir: path.join(base, "p2"), device }], base, `${sp.id} pair ${persona.id} ${challenger.arm_id} vs ${reference.arm_id}`);
+    if (limitHit({ out: r.text ?? r.out, err: r.err, code: r.code })) throw new SimRateLimited((r.out + r.err).slice(-300));
+    j = extractJson(r.text);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+  if (!j || ![0, 1, 2].includes(Number(j.prefer))) return null;
+  const pick = Number(j.prefer) === 0 ? null : (Number(j.prefer) === 1) === !flip ? challenger.arm_id : reference.arm_id;
+  await db.run("INSERT INTO sim_pairs (ts, species, arm_a, arm_b, persona, winner, strength, why, report, agent) VALUES (?,?,?,?,?,?,?,?,?,?)",
+    [Date.now(), sp.id, challenger.arm_id, reference.arm_id, persona.id, pick, Number(j.strength) || 1, String(j.why ?? "").slice(0, 600), JSON.stringify({ flip, ...j }).slice(0, 8000), cfg.sims.agent ?? "claude"]);
+  return { challenger: challenger.arm_id, reference: reference.arm_id, winner: pick, why: j.why };
+}
+
+/** Pairwise record of each challenger against a reference arm over the last 14 days. */
+export async function pairStatsFor(db, spId, referenceId) {
+  if (!referenceId) return {};
+  const rows = await db.all("SELECT arm_a, winner, strength FROM sim_pairs WHERE species=? AND arm_b=? AND ts>?", [spId, referenceId, Date.now() - 14 * 86400_000]).catch(() => []);
+  const out = {};
+  for (const r of rows) {
+    const p = (out[r.arm_a] ??= { wins: 0, losses: 0, ties: 0, n: 0 });
+    p.n++;
+    if (!r.winner) p.ties++;
+    else if (r.winner === r.arm_a) p.wins++;
+    else p.losses++;
+  }
+  return out;
+}
+
+/** Experience score per arm over the last 14 days: mean, standard error, count. */
+export async function qualityFor(db, spId) {
+  const rows = await db.all("SELECT arm_id, score FROM sim_runs WHERE species=? AND ts>? AND outcome!='error' AND score IS NOT NULL", [spId, Date.now() - 14 * 86400_000]).catch(() => []);
+  const by = {};
+  for (const r of rows) (by[r.arm_id] ??= []).push(r.score);
+  return Object.fromEntries(Object.entries(by).map(([id, v]) => {
+    const m = v.reduce((a, b) => a + b, 0) / v.length;
+    const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, v.length - 1));
+    return [id, { n: v.length, mean: m, se: sd / Math.sqrt(v.length) }];
+  }));
+}
+
+/** What the router saw: pages viewed and time until the fitness event (not the agent's opinion). */
+async function measureSession(db, spId, vids, started, stageEvent) {
+  if (!vids.length) return { pageviews: 0, paths: 0, stageAfterPages: null, stageAfterSec: null };
+  const rows = await db.all(`SELECT name, ts, path FROM events WHERE species=? AND ts>=? AND visitor IN (${vids.map(() => "?").join(",")}) ORDER BY ts`, [spId, started - 1000, ...vids]);
+  const pv = rows.filter((r) => r.name === "pageview");
+  const first = rows[0]?.ts ?? started;
+  const hit = rows.find((r) => r.name === stageEvent);
+  return {
+    pageviews: pv.length,
+    paths: new Set(pv.map((r) => r.path)).size,
+    stageAfterPages: hit ? pv.filter((r) => r.ts <= hit.ts).length : null,
+    stageAfterSec: hit ? Math.round((hit.ts - first) / 1000) : null,
+  };
+}
+
+/**
+ * Experience score 0-100 for one session: success (35), the persona's survey (45) and effort measured by the
+ * router (20: pages it took to reach the fitness event). Finer than pass/fail, so arms separate with fewer sessions.
+ */
+export function experienceScore({ outcome, stageHit, phases, measured }) {
+  const success = outcome === "success" ? 1 : stageHit ? 0.5 : 0;
+  const per = phases
+    .map((p) => {
+      const v = Object.values(p.scores ?? {}).map(Number).filter((x) => x >= 1 && x <= 5);
+      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : Number(p.rating) || null;
+    })
+    .filter((x) => x);
+  const survey = per.length ? (per.reduce((a, b) => a + b, 0) / per.length - 1) / 4 : success * 0.5;
+  const pages = measured?.stageAfterPages;
+  const effort = pages == null ? 0 : Math.max(0, Math.min(1, 1 - (pages - 1) / 8));
+  return Math.round(100 * (0.35 * success + 0.45 * survey + 0.2 * effort) * 10) / 10;
 }
 
 /**
@@ -144,6 +238,7 @@ export async function runSession({ cfg, db, sp, stageEvent, arm, persona }) {
     ? await db.all(`SELECT DISTINCT name FROM events WHERE species=? AND ts>=? AND visitor IN (${vids.map(() => "?").join(",")})`, [sp.id, started - 1000, ...vids])
     : [];
   const names = evs.map((e) => e.name);
+  const measured = await measureSession(db, sp.id, vids, started, stageEvent);
   const stageHit = names.includes(stageEvent) ? 1 : 0;
   const done = phases.length === persona.phases.length && phases.every((p) => p.done === true) ? 1 : 0;
   const ratings = phases.map((p) => Number(p.rating)).filter((x) => x >= 1 && x <= 5);
@@ -154,10 +249,12 @@ export async function runSession({ cfg, db, sp, stageEvent, arm, persona }) {
     ts: Date.now(), species: sp.id, arm_id: arm.arm_id, persona: persona.id, device: persona.device, outcome,
     stage_hit: stageHit, done, rating, minutes: +((Date.now() - started) / 60000).toFixed(1),
     report: { events: names, phases },
+    measured,
   };
+  row.score = experienceScore({ outcome, stageHit, phases, measured });
   await db.run(
-    "INSERT INTO sim_runs (ts, species, arm_id, persona, device, outcome, stage_hit, done, rating, minutes, report, agent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-    [row.ts, row.species, row.arm_id, row.persona, row.device, row.outcome, row.stage_hit, row.done, row.rating, row.minutes, JSON.stringify(row.report).slice(0, 60000), s.agent ?? "claude"],
+    "INSERT INTO sim_runs (ts, species, arm_id, persona, device, outcome, stage_hit, done, rating, minutes, report, agent, score, measured) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    [row.ts, row.species, row.arm_id, row.persona, row.device, row.outcome, row.stage_hit, row.done, row.rating, row.minutes, JSON.stringify(row.report).slice(0, 60000), s.agent ?? "claude", row.score, JSON.stringify(measured)],
   );
   return row;
 }
@@ -179,17 +276,19 @@ export function allocate({ arms, simStats, budget, minSims, combined, rng = Math
   // The champion is the yardstick: it gets every 4th session so it keeps being measured alongside the newcomers
   // (otherwise Thompson sampling starves it and newcomers are compared with its old numbers).
   const champ = arms.find((a) => a.status === "champion");
+  const guard = arms.find((a) => a.status === "guard");
   for (let k = 0; k < budget; k++) {
-    if (champ && k % 4 === 0) {
-      count[champ.arm_id]++;
-      plan.push({ arm: champ });
+    const anchor = k % 4 === 0 ? champ : k % 8 === 2 ? guard : null;
+    if (anchor) {
+      count[anchor.arm_id]++;
+      plan.push({ arm: anchor });
       continue;
     }
-    const needy = arms.filter((a) => count[a.arm_id] < minSims && !(a.status === "control" && count[a.arm_id] >= Math.ceil(minSims / 2)));
+    const needy = arms.filter((a) => a.status !== "guard" && count[a.arm_id] < minSims && !(a.status === "control" && count[a.arm_id] >= Math.ceil(minSims / 2)));
     let arm;
     if (needy.length) arm = needy.sort((x, y) => count[x.arm_id] - count[y.arm_id])[0];
     else {
-      const pool = arms.filter((a) => a.status !== "control");
+      const pool = arms.filter((a) => a.status !== "control" && a.status !== "guard");
       if (!pool.length) break;
       arm = pool
         .map((a) => {
@@ -217,7 +316,17 @@ export async function runSims({ cfg, db, sp, stageEvent, arms, personas, budget,
     const pc = (personaCounts[r.arm_id] ??= {});
     pc[r.persona] = (pc[r.persona] ?? 0) + 1;
   }
-  const plan = allocate({ arms, simStats, budget, minSims, combined });
+  // Part of the budget goes to blinded side-by-side comparisons (each costs about two sessions): every challenger
+  // against the champion, fewest comparisons first, and the champion against the rollback guard if there is one.
+  const champ = arms.find((a) => a.status === "champion");
+  const guard = arms.find((a) => a.status === "guard");
+  const pairCounts = champ ? await pairStatsFor(db, sp.id, champ.arm_id) : {};
+  const challengers = champ ? arms.filter((a) => a.status === "nursery" || a.status === "live").sort((x, y) => (pairCounts[x.arm_id]?.n ?? 0) - (pairCounts[y.arm_id]?.n ?? 0)) : [];
+  const nPairs = champ ? Math.min(Math.floor((budget * (cfg.sims.pairShare ?? 0.3)) / 2), challengers.length + (guard ? 1 : 0)) : 0;
+  const pairJobs = [];
+  if (guard && nPairs) pairJobs.push({ pair: { challenger: champ, reference: guard } });
+  for (const c of challengers) if (pairJobs.length < nPairs) pairJobs.push({ pair: { challenger: c, reference: champ } });
+  const plan = allocate({ arms, simStats, budget: budget - 2 * pairJobs.length, minSims, combined });
   // Choose personas: for each arm, the persona it has met least (ties broken by list order),
   // so arms end up compared on the same people.
   const jobs = plan.map(({ arm }) => {
@@ -226,8 +335,23 @@ export async function runSims({ cfg, db, sp, stageEvent, arms, personas, budget,
     pc[persona.id] = (pc[persona.id] ?? 0) + 1;
     return { arm, persona };
   });
+  for (const pj of pairJobs) pj.persona = personas[Math.floor(Math.random() * personas.length)];
+  jobs.unshift(...pairJobs);
   const results = [];
-  await pool(jobs, cfg.sims.concurrency ?? 4, async ({ arm, persona }) => {
+  results.pairs = [];
+  await pool(jobs, cfg.sims.concurrency ?? 4, async ({ arm, persona, pair }) => {
+    if (pair) {
+      const p = await runPair({ cfg, db, sp, challenger: pair.challenger, reference: pair.reference, persona }).catch((e) => {
+        if (e instanceof SimRateLimited) throw e;
+        log(`[${sp.id}] pair failed: ${e.message}`);
+        return null;
+      });
+      if (p) {
+        log(`[${sp.id}] pair ${persona.id}: ${p.challenger} vs ${p.reference} -> ${p.winner ?? "no preference"}`);
+        results.pairs.push(p);
+      }
+      return;
+    }
     const r = await runSession({ cfg, db, sp, stageEvent, arm, persona });
     log(`[${sp.id}] sim ${persona.id} on ${arm.arm_id}: ${r.outcome} (stage ${r.stage_hit ? "hit" : "missed"}, done ${r.done}, rating ${r.rating ?? "-"}, ${r.minutes} min)`);
     results.push(r);

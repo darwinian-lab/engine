@@ -10,10 +10,10 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { d1 } from "./lib/d1.mjs";
 import { loadConfig } from "./lib/config.mjs";
-import { mutationSize, decideNursery, NURSERY_DEFAULTS } from "./lib/select.mjs";
+import { mutationSize, decideNursery, probRegress, NURSERY_DEFAULTS } from "./lib/select.mjs";
 import { gate } from "./lib/gates.mjs";
 import { mutationPrompt, repairPrompt, auditPrompt, auditFixPrompt, curatorPrompt, ideationPrompt } from "./lib/prompts.mjs";
-import { loadPersonas, runSims, simStatsFor, simDigest } from "./lib/sims.mjs";
+import { loadPersonas, runSims, simStatsFor, simDigest, qualityFor, pairStatsFor } from "./lib/sims.mjs";
 import { pickRevivals, isRevivable } from "./lib/seeds.mjs";
 import { ensureLabels, listIssues, backlogText, applyCuration, createIssue, comment, closeIssue, parseImplements } from "./lib/issues.mjs";
 import { ENGINE_DIR } from "./lib/config.mjs";
@@ -465,7 +465,7 @@ async function cycle(sp) {
     issues = wanted.map((w) => ({ number: null, title: w.title, body: w.body, votes: 1, source: "owner", labels: [] }));
   }
 
-  const alive = async () => db.all("SELECT * FROM arms WHERE species=? AND status IN ('live','champion','nursery','control')", [sp.id]);
+  const alive = async () => db.all("SELECT * FROM arms WHERE species=? AND status IN ('live','champion','nursery','control','guard')", [sp.id]);
   const weekly = (await db.first("SELECT COUNT(DISTINCT visitor) n FROM events WHERE species=? AND name='js_seen' AND ts>? AND segment!='sim'", [sp.id, now() - 7 * 86400_000]))?.n ?? 0;
   const realStats = async () => {
     const rows = await db.all("SELECT arm_id, trials, successes FROM arm_stats WHERE species=? AND segment='all'", [sp.id]);
@@ -552,10 +552,10 @@ async function cycle(sp) {
 
   // 2. Simulate: personas use every competing arm through the real router.
   arms = await alive();
-  const competing = arms.filter((a) => ["champion", "live", "nursery", "control"].includes(a.status));
-  let sims = await simStatsFor(db, sp.id, cfg.sims?.agent);
+  const competing = arms.filter((a) => ["champion", "live", "nursery", "control", "guard"].includes(a.status));
+  let sims = await simStatsFor(db, sp.id);
   let real = await realStats();
-  const evolving = competing.filter((a) => a.status !== "control");
+  const evolving = competing.filter((a) => a.status !== "control" && a.status !== "guard");
   let pre = decideNursery({ arms: evolving, real, sims, weeklyReal: weekly, opts: sel });
   const personas = loadPersonas(ENGINE_DIR, sp.id);
   let simResults = [];
@@ -564,15 +564,19 @@ async function cycle(sp) {
     simResults = await runSims({ cfg: { ...cfg, sims: simCfg }, db, sp, stageEvent: stage.event, arms: competing, personas, budget: Number(argv("--sims") ?? simCfg.sessionsPerSpecies ?? 24), minSims: sel.minSims, combined: pre.combined });
     if (simResults.rateLimited) await journal(sp.id, "note", null, "simulations paused: model usage limit reached");
     const ok = simResults.filter((r) => r.outcome === "success").length;
-    if (simResults.length) await journal(sp.id, "sims", null, `${simResults.length} simulated sessions: ${ok} succeeded. ${[...new Set(simResults.map((r) => r.arm_id))].map((id) => { const rs = simResults.filter((r) => r.arm_id === id); return `${id} ${rs.filter((r) => r.outcome === "success").length}/${rs.length}`; }).join(", ")}`);
+    const pairNote = (simResults.pairs ?? []).length ? ` Side by side: ${simResults.pairs.map((p) => `${p.challenger} vs ${p.reference} → ${p.winner ?? "even"}`).join("; ")}.` : "";
+    if (simResults.length || pairNote) await journal(sp.id, "sims", null, `${simResults.length} simulated sessions: ${ok} succeeded. ${[...new Set(simResults.map((r) => r.arm_id))].map((id) => { const rs = simResults.filter((r) => r.arm_id === id); return `${id} ${rs.filter((r) => r.outcome === "success").length}/${rs.length}`; }).join(", ")}${pairNote}`);
   }
 
   if (SIM_ONLY || NO_SIMS) return;
   // 3. Select: promote, graduate, retire.
-  sims = await simStatsFor(db, sp.id, cfg.sims?.agent);
+  sims = await simStatsFor(db, sp.id);
   real = await realStats();
   arms = await alive();
-  const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control"), real, sims, weeklyReal: weekly, opts: sel });
+  const quality = await qualityFor(db, sp.id);
+  const champRow = arms.find((a) => a.status === "champion");
+  const pairs = champRow ? await pairStatsFor(db, sp.id, champRow.arm_id) : {};
+  const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control" && a.status !== "guard"), real, sims, quality, pairs, weeklyReal: weekly, opts: sel });
   if (dec.blind) await journal(sp.id, "note", null, "no simulated person or visitor succeeded on any arm this cycle; that usually means the measurement is broken, so no one was promoted, graduated or retired");
   ghNotice(`${sp.id} cycle`, `stage ${st.stage}, gen ${st.generation}, ${arms.length} alive, ${weekly} real visitors/wk, sim weight ${dec.lambda.toFixed(2)}, promote ${(dec.promotions ?? []).join(",") || "-"}, graduate ${dec.graduate.join(",") || "-"}, retire ${dec.retire.length}`);
   if (!DRY && Object.keys(dec.pb).length) {
@@ -594,16 +598,20 @@ async function cycle(sp) {
       await db.run("UPDATE arms SET status='live', graduated_at=? WHERE species=? AND arm_id=?", [now(), sp.id, id]);
       await journal(sp.id, "graduate", id, `left the nursery for real traffic: P(better than champion)=${dec.pbeat[id].toFixed(2)} [${dec.combined[id].sims.successes}/${dec.combined[id].sims.trials} simulated]`);
     }
-    // Promote every clear winner, best first. The first one that merges becomes champion; main has then moved, so
-    // the others are replayed onto it as finalists and must confirm themselves once more before they merge.
-    let newChampion = null;
+    // Merge every winner, best first, one after another: each lands on top of the previous one, so improvements
+    // accumulate. Main then serves as the champion. The previous champion stays as a rollback guard for a few days.
+    const merged = [];
+    const fmt = (id) => {
+      const c = dec.combined[id], q = quality[id], pr = pairs[id];
+      return `P(regression)=${(dec.preg?.[id] ?? 0).toFixed(2)}, score ${q ? q.mean.toFixed(0) : "-"} vs ${quality[champion.arm_id]?.mean?.toFixed(0) ?? "-"}, side by side ${pr ? `${pr.wins}-${pr.losses}-${pr.ties}` : "-"} [${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real]`;
+    };
     for (const id of dec.promotions ?? []) {
       const winner = arms.find((a) => a.arm_id === id);
       if (!winner) continue;
       const outcome = await pipe.promotePR(sp, repo, species, st, winner).catch((e) => (log(`promotion failed: ${e.message}`), ghNotice(`${sp.id} promotion`, `${winner.arm_id}: ${e.message}`), "failed"));
       if (outcome === "finalist") {
-        await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.9, revivable=0 WHERE species=? AND arm_id=?", [now(), `won, then continued as finalist ${winner.arm_id}r rebased onto main`, st.generation, sp.id, winner.arm_id]);
-        await journal(sp.id, "finalist", `${winner.arm_id}r`, `${winner.arm_id} beat the champion (P=${dec.pbeat[id].toFixed(3)}) but main ${newChampion ? `now includes ${newChampion}` : "moved since it was bred"}; its change was replayed onto main and must confirm itself before merging`);
+        await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.9, revivable=0 WHERE species=? AND arm_id=?", [now(), `won, then continued as finalist ${winner.arm_id}r replayed onto main (conflicts)`, st.generation, sp.id, winner.arm_id]);
+        await journal(sp.id, "finalist", `${winner.arm_id}r`, `${winner.arm_id} won (${fmt(id)}) but conflicted with main; its change was replayed onto main and goes back to the nursery for a quick check`);
         await deleteWorker(`sp-${sp.id}-${winner.arm_id}`);
         continue;
       }
@@ -611,17 +619,32 @@ async function cycle(sp) {
         // Never drop a winner over merge trouble: retire this copy and re-implement the same idea on today's main
         // (the seed bank gives it the next spawn slot).
         await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.95, revivable=1 WHERE species=? AND arm_id=?", [now(), "won, but could not be merged onto main; re-implementing the idea on the current main", st.generation, sp.id, winner.arm_id]);
-        await journal(sp.id, "note", winner.arm_id, "beat the champion, but its code could not be merged or replayed onto main; the idea will be re-implemented on the current main next");
+        await journal(sp.id, "note", winner.arm_id, "won, but its code could not be merged or replayed onto main; the idea will be re-implemented on the current main next");
         await deleteWorker(`sp-${sp.id}-${winner.arm_id}`);
         if (winner.prs) for (const p of JSON.parse(winner.prs)) await closePR(repoSlug, p.number, "Won selection, but couldn't be merged onto the current main. The idea is being re-implemented on top of main.").catch(() => {});
         continue;
       }
-      // Merged: it becomes the champion (serving main, which keeps everything merged before it).
-      const old = arms.find((a) => a.status === "champion" && a.arm_id !== winner.arm_id && a.arm_id !== newChampion) ?? (newChampion ? arms.find((a) => a.arm_id === newChampion) : null);
-      await db.run("UPDATE arms SET status='champion', graduated_at=COALESCE(graduated_at, ?) WHERE species=? AND arm_id=?", [now(), sp.id, winner.arm_id]);
+      merged.push(winner);
+      await journal(sp.id, "promote", id, `merged into main: ${fmt(id)}`);
+      if (winner.issue) await closeIssue(repoSlug, winner.issue, `Shipped: mutant \`${winner.arm_id}\` implemented this and was merged into main.`).catch(() => {});
+    }
+    if (merged.length) {
+      // The last merged winner names the new champion (main now carries all of them).
+      const top = merged.at(-1);
+      const old = arms.find((a) => a.status === "champion");
+      for (const w of merged.slice(0, -1)) {
+        await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=1, revivable=0 WHERE species=? AND arm_id=?", [now(), `merged into main; now part of champion ${top.arm_id}`, st.generation, sp.id, w.arm_id]);
+        await deleteWorker(`sp-${sp.id}-${w.arm_id}`);
+      }
+      await db.run("UPDATE arms SET status='champion', graduated_at=COALESCE(graduated_at, ?) WHERE species=? AND arm_id=?", [now(), sp.id, top.arm_id]);
       if (old) {
-        await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.9, revivable=0 WHERE species=? AND arm_id=?", [now(), `outcompeted by ${winner.arm_id}`, st.generation, sp.id, old.arm_id]);
-        await journal(sp.id, "retire", old.arm_id, `outcompeted by ${winner.arm_id}`);
+        // Keep the old champion's own deployment as a reference for a few days (simulated people only).
+        for (const g of arms.filter((a) => a.status === "guard")) {
+          await db.run("UPDATE arms SET status='retired', retired_at=?, cause=? WHERE species=? AND arm_id=?", [now(), "guard replaced by a newer champion", sp.id, g.arm_id]);
+          await deleteWorker(`sp-${sp.id}-${g.arm_id}`);
+        }
+        await db.run("UPDATE arms SET status='guard', retired_at=?, cause=? WHERE species=? AND arm_id=?", [now(), `previous champion, kept as a rollback guard while ${top.arm_id} proves itself`, sp.id, old.arm_id]);
+        await journal(sp.id, "retire", old.arm_id, `replaced by ${merged.map((w) => w.arm_id).join(" + ")}; kept for ${sel.guardDays ?? 3} days as a rollback guard`);
       }
       st.generation += 1;
       await db.run("UPDATE species_state SET generation=?, updated_at=? WHERE species=?", [st.generation, now(), sp.id]);
@@ -629,14 +652,39 @@ async function cycle(sp) {
       await must("git", ["checkout", "-q", "main"], { cwd: repo });
       await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
       await must("npm", ["install", "--no-audit", "--no-fund"], { cwd: repo, timeoutMs: 10 * 60_000 });
-      await deployArm(sp, repo, winner.arm_id).catch((e) => log(`[${sp.id}] redeploying champion from main failed: ${e.message}`));
-      if (old) await deleteWorker(`sp-${sp.id}-${old.arm_id}`);
-      const c = dec.combined[id];
-      await journal(sp.id, "promote", id, `new champion: P(better than ${champion.arm_id})=${dec.pbeat[id].toFixed(3)}, expected loss ${((dec.loss?.[id] ?? 0) * 100).toFixed(2)} pts [${c.sims.successes}/${c.sims.trials} simulated, ${c.real.successes}/${c.real.trials} real]; generation ${st.generation}`);
-      if (winner.issue) await closeIssue(repoSlug, winner.issue, `Shipped: mutant \`${winner.arm_id}\` implemented this and became the champion.`).catch(() => {});
-      newChampion = winner.arm_id;
+      await deployArm(sp, repo, top.arm_id).catch((e) => log(`[${sp.id}] redeploying champion from main failed: ${e.message}`));
+      await journal(sp.id, "promote", top.arm_id, `new champion (main with ${merged.map((w) => w.arm_id).join(", ")}); generation ${st.generation}`);
     }
-    dec.promote = newChampion;
+    dec.promote = merged.at(-1)?.arm_id ?? null;
+
+    // Rollback guard: if the new main is clearly worse than the previous champion, revert what was merged since.
+    const guard = (await alive()).find((a) => a.status === "guard");
+    const champNow = (await alive()).find((a) => a.status === "champion");
+    if (guard && champNow) {
+      const comb = (id) => ({ trials: (real[id]?.trials ?? 0) + dec.lambda * (sims[id]?.trials ?? 0), successes: (real[id]?.successes ?? 0) + dec.lambda * (sims[id]?.successes ?? 0) });
+      const gs = { [guard.arm_id]: comb(guard.arm_id), [champNow.arm_id]: comb(champNow.arm_id) };
+      const enoughEv = (sims[champNow.arm_id]?.trials ?? 0) >= sel.minSimsPromote && (sims[guard.arm_id]?.trials ?? 0) >= 6;
+      const pr = (await pairStatsFor(db, sp.id, guard.arm_id))[champNow.arm_id];
+      const pref = pr?.n ? (1 + pr.wins + 0.5 * pr.ties) / (2 + pr.n) : null;
+      const worse = enoughEv && (probRegress(gs[champNow.arm_id], gs[guard.arm_id], sel.regressMargin) > sel.killRegress || (pr?.n >= 4 && pref < 0.25));
+      const expired = now() - (guard.retired_at ?? 0) > (sel.guardDays ?? 3) * 86400_000;
+      if (worse) {
+        const since = guard.retired_at ?? 0;
+        const toRevert = (await db.all("SELECT arm_id, merge_sha FROM arms WHERE species=? AND merge_sha IS NOT NULL AND merged_at>=? ORDER BY merged_at DESC", [sp.id, since - 60_000])).filter((r) => r.merge_sha);
+        const ok = await pipe.revertMerges(sp, repo, toRevert.map((r) => r.merge_sha)).catch((e) => (log(`rollback failed: ${e.message}`), false));
+        if (ok) {
+          await db.run("UPDATE arms SET status='champion', retired_at=NULL, cause=NULL WHERE species=? AND arm_id=?", [sp.id, guard.arm_id]);
+          await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, revivable=1 WHERE species=? AND arm_id=?", [now(), `rolled back: main got worse than the previous champion ${guard.arm_id}`, st.generation, sp.id, champNow.arm_id]);
+          await must("npm", ["install", "--no-audit", "--no-fund"], { cwd: repo, timeoutMs: 10 * 60_000 });
+          await deployArm(sp, repo, guard.arm_id).catch((e) => log(`[${sp.id}] redeploying after rollback failed: ${e.message}`));
+          await deleteWorker(`sp-${sp.id}-${champNow.arm_id}`);
+          await journal(sp.id, "retire", champNow.arm_id, `rolled back ${toRevert.map((r) => r.arm_id).join(", ")}: the new main did clearly worse than ${guard.arm_id}; ${guard.arm_id} is champion again`);
+        } else await journal(sp.id, "note", champNow.arm_id, `looks clearly worse than the previous champion ${guard.arm_id}, but the automatic rollback could not revert its merges cleanly`);
+      } else if (expired) {
+        await db.run("UPDATE arms SET status='retired', cause=? WHERE species=? AND arm_id=?", [`previous champion; ${champNow.arm_id} held up for ${sel.guardDays ?? 3} days`, sp.id, guard.arm_id]);
+        await deleteWorker(`sp-${sp.id}-${guard.arm_id}`);
+      }
+    }
   }
 
   // 4. Backlog: turn what simulated people hit and wished for into issues; ideate once a day.
@@ -672,7 +720,7 @@ async function crossoverPair(sp, arms, champion, real, weekly) {
   const sel = { ...NURSERY_DEFAULTS, ...cfg.selection, ...(cfg.nursery ?? {}) };
   const pool = arms.filter((a) => (a.status === "live" || a.status === "nursery") && a.prs && a.git_ref);
   if (pool.length < 2 || !champion) return null;
-  const d = decideNursery({ arms: [champion, ...pool], real, sims: await simStatsFor(db, sp.id, cfg.sims?.agent), weeklyReal: weekly, opts: sel });
+  const d = decideNursery({ arms: [champion, ...pool], real, sims: await simStatsFor(db, sp.id), weeklyReal: weekly, opts: sel });
   const judged = (id) => (d.combined[id]?.sims.trials ?? 0) >= sel.minSims || (d.combined[id]?.real.trials ?? 0) >= sel.minTrials;
   const good = pool.filter((a) => judged(a.arm_id) && (d.pbeat[a.arm_id] ?? 0) >= (cfg.crossover?.minPBeat ?? 0.5)).sort((x, y) => d.pbeat[y.arm_id] - d.pbeat[x.arm_id]);
   const tried = (await db.all("SELECT arm_id, crossed_from FROM arms WHERE species=? AND crossed_from IS NOT NULL", [sp.id])).map((r) => ({ id: r.arm_id, from: r.crossed_from.split(",") }));

@@ -194,13 +194,51 @@ Open ${url}
 I'd use something else just as happily. 4 = clearly good: fast, obvious, I'd come back. 5 = delighted, I'd recommend it
 to a friend. Think about what this person would compare it with (the sites they usually use).
 
+## Survey: score each 1-5 honestly (1 = very bad, 3 = okay, 5 = excellent), as this person
+- find: how easily you found what you needed (the right page, field or button)
+- clarity: how clear the next step and the main button were at every moment
+- speed: how quick it felt to get the job done (few steps, no waiting, no re-doing)
+- looks: how good and trustworthy the design looked (modern, clean, not cluttered, works on your device)
+- trust: how comfortable you felt giving it your details and relying on the result
+- return: how likely you are to use it again or recommend it
+
 ## When you are finished (or give up)
 Reply with ONLY this JSON, nothing else:
 {"done": true|false, "gave_up": "reason, or empty", "stuck": ["specific moments you were confused or blocked"],
  "wishes": ["things you wished the site did or had"], "liked": ["things that worked well"], "rating": 1-5 (see scale),
+ "scores": {"find": 1-5, "clarity": 1-5, "speed": 1-5, "looks": 1-5, "trust": 1-5, "return": 1-5},
+ "best": "the single best thing, one sentence", "worst": "the single worst thing, one sentence",
  "remember": "what you would realistically remember or still have next time (including any links you saved)",
  "share": "exactly what you would send to someone else, if anything (e.g. a link with a short message)",
  "summary": "2-3 sentences in first person about how it went"}`;
+}
+
+export function pairPrompt({ persona, task, device, url1, url2, email }) {
+  return `You are role-playing a real person comparing two versions of the same website, in two real browsers you control:
+the "site1" browser tools open Version 1 and the "site2" browser tools open Version 2. Stay in character. You are NOT a
+tester or a developer, and you don't know how either version was made.
+
+## Who you are
+${persona.who}
+Device: ${device === "mobile" ? "a phone" : "a laptop"}.
+
+## What you want to do
+${task}
+
+## Do it twice
+1. With the site1 tools, open ${url1} and do the task as this person would.
+2. With the site2 tools, open ${url2} and do the same task again.
+Use invented personal details (email ${email}; if a verification code is asked for, try 424242). Do not pay.
+Never open developer tools or type URLs a normal person couldn't know. About 25 actions per version at most.
+
+## Then compare, as this person
+Which version would you rather use for this? Judge the whole experience: finding things, clarity of the next step,
+speed, how it looks on your device, trust. Small differences count; say "none" only if you truly can't tell.
+
+Reply with ONLY this JSON:
+{"prefer": 1|2|0, "strength": 1-3 (1 slight, 2 clear, 3 strong), "why": "two sentences on the deciding differences",
+ "v1": {"done": true|false, "scores": {"find":1-5,"clarity":1-5,"speed":1-5,"looks":1-5,"trust":1-5,"return":1-5}},
+ "v2": {"done": true|false, "scores": {"find":1-5,"clarity":1-5,"speed":1-5,"looks":1-5,"trust":1-5,"return":1-5}}}`;
 }
 
 export function curatorPrompt({ product, issues, feedback }) {

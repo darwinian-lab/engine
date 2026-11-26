@@ -85,9 +85,15 @@
   },
   "selection": {
     "minTrials": 100,
-    "promoteAt": 0.8,
-    "maxLoss": 0.005,
-    "killAt": 0.1
+    "minSimsPromote": 10,
+    "minPairs": 2,
+    "regressMargin": 0.05,
+    "maxRegress": 0.25,
+    "scoreMargin": 3,
+    "maxQualityRegress": 0.2,
+    "minPairPref": 0.4,
+    "killRegress": 0.9,
+    "guardDays": 3
   },
   "maxSpawnPerRun": 3,
   "timeouts": {
@@ -117,6 +123,7 @@
   "sims": {
     "enabled": true,
     "inCycle": false,
+    "pairShare": 0.3,
     "agent": "codex",
     "model": "haiku",
     "sessionsPerSpecies": 24,

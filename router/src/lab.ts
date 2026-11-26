@@ -120,10 +120,11 @@ export async function snapshot(env: Env, sp: string) {
     q("SELECT ts, kind, arm_id, detail FROM journal WHERE species = ? OR species IS NULL ORDER BY ts DESC LIMIT 300", sp),
     safe(q("SELECT id, arm_id, kind, page, viewport, width, height, size, created_at FROM media WHERE species = ? ORDER BY id", sp), []),
     safe(q("SELECT ts, arm_id, pbest, trials, successes FROM pb_history WHERE species = ? AND ts > ? ORDER BY ts", sp, Date.now() - 60 * DAY), []),
-    safe(q("SELECT id, ts, arm_id, persona, device, outcome, stage_hit, done, rating, minutes, report, agent FROM sim_runs WHERE species = ? AND ts > ? ORDER BY ts DESC LIMIT 600", sp, Date.now() - 30 * DAY), []),
+    safe(q("SELECT id, ts, arm_id, persona, device, outcome, stage_hit, done, rating, minutes, report, agent, score FROM sim_runs WHERE species = ? AND ts > ? ORDER BY ts DESC LIMIT 600", sp, Date.now() - 30 * DAY), []),
     safe(env.DB.prepare("SELECT json, updated_at FROM backlog WHERE species = ?").bind(sp).first<any>(), null),
     safe(q("SELECT * FROM growth_items WHERE species = ? ORDER BY created_at DESC LIMIT 200", sp), []),
   ]);
+  const pairRows: any[] = await safe(q("SELECT arm_a, arm_b, winner FROM sim_pairs WHERE species = ? AND ts > ?", sp, Date.now() - 14 * DAY), []);
   const cfg = parse(configs.find((c: any) => c.species === sp)?.json) ?? {};
   const stageIdx = state?.stage ?? 0;
   const stage = cfg.stages?.[Math.min(stageIdx, (cfg.stages?.length ?? 1) - 1)];
@@ -142,10 +143,8 @@ export async function snapshot(env: Env, sp: string) {
   // Selection evidence = real visitors + simulated sessions (as the evolve loop weighs them, weight 1 until real traffic grows).
   const since14 = Date.now() - 14 * DAY;
   const simAgg: Record<string, { trials: number; successes: number; rated: number; ratingSum: number }> = {};
-  // Same rule as selection: only sessions from the current simulator (the newest session's) count.
-  const simAgent = (simRows as any[])[0]?.agent ?? null;
   for (const r of simRows as any[]) {
-    if (r.outcome === "error" || (simAgent && r.agent !== simAgent)) continue;
+    if (r.outcome === "error") continue;
     const a = (simAgg[r.arm_id] ??= { trials: 0, successes: 0, rated: 0, ratingSum: 0 });
     if (r.ts > since14) {
       a.trials++;
@@ -194,6 +193,23 @@ export async function snapshot(env: Env, sp: string) {
     }),
     backlog: backlogRow ? { updated_at: backlogRow.updated_at, issues: parse(backlogRow.json) ?? [] } : null,
     growth: growthRows,
+    quality: (() => {
+      const by: Record<string, number[]> = {};
+      for (const r of simRows as any[]) if (r.score != null && r.outcome !== "error" && r.ts > Date.now() - 14 * DAY) (by[r.arm_id] ??= []).push(r.score);
+      return Object.fromEntries(Object.entries(by).map(([k, v]) => [k, { n: v.length, mean: v.reduce((a, b) => a + b, 0) / v.length }]));
+    })(),
+    pairs: (() => {
+      const champ = (arms as any[]).find((a) => a.status === "champion")?.arm_id;
+      const out: Record<string, { wins: number; losses: number; ties: number }> = {};
+      for (const r of pairRows) {
+        if (r.arm_b !== champ) continue;
+        const p = (out[r.arm_a] ??= { wins: 0, losses: 0, ties: 0 });
+        if (!r.winner) p.ties++;
+        else if (r.winner === r.arm_a) p.wins++;
+        else p.losses++;
+      }
+      return out;
+    })(),
     arms: arms.map((a: any) => ({
       arm_id: a.arm_id,
       status: a.status,

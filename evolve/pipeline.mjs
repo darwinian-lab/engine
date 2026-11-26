@@ -388,27 +388,36 @@ export function makePipeline(d) {
     // is rebased forever (seen: g1-fhb4 → r → rr → rrr).
     const sinceBase = (await must("git", ["diff", "--name-only", `${winner.git_ref}...origin/main`], { cwd: repo })).split("\n").filter(Boolean);
     const isProtected = (f) => (species.protected ?? []).some((p) => (p.endsWith("/") ? f.startsWith(p) : f === p));
-    const fresh = sinceBase.every(isProtected);
-    if (fresh) {
-      await must("git", ["checkout", "-q", "main"], { cwd: repo });
-      await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
-      const m = await run("git", [...GIT_ID, "merge", "--no-ff", "--no-edit", "-m", `Promote ${winner.arm_id}${prs.length ? `: ${prs.map((p) => `#${p.number}`).join(", ")}` : ""}`, winner.git_ref], { cwd: repo });
-      if (m.code !== 0) {
-        // Conflicts only in engine-owned files: main's version wins. Anything else: replay as a finalist below.
-        const conflicted = (await run("git", ["diff", "--name-only", "--diff-filter=U"], { cwd: repo })).out.split("\n").filter(Boolean);
-        if (conflicted.length && conflicted.every(isProtected)) {
-          await must("git", ["checkout", "--ours", "--", ...conflicted], { cwd: repo });
-          await must("git", ["add", "--", ...conflicted], { cwd: repo });
-          await must("git", [...GIT_ID, "commit", "-q", "--no-edit"], { cwd: repo });
-        } else {
-          await run("git", ["merge", "--abort"], { cwd: repo });
-          return promoteAsFinalist();
-        }
+    // Merge straight onto the current main (which may already hold other winners merged this cycle). Only real
+    // conflicts, or checks that fail on the merged result, send it the slower finalist way.
+    await must("git", ["checkout", "-q", "main"], { cwd: repo });
+    await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
+    const m = await run("git", [...GIT_ID, "merge", "--no-ff", "--no-edit", "-m", `Promote ${winner.arm_id}${prs.length ? `: ${prs.map((p) => `#${p.number}`).join(", ")}` : ""}`, winner.git_ref], { cwd: repo });
+    if (m.code !== 0) {
+      // Conflicts only in engine-owned files: main's version wins. Anything else: replay as a finalist.
+      const conflicted = (await run("git", ["diff", "--name-only", "--diff-filter=U"], { cwd: repo })).out.split("\n").filter(Boolean);
+      if (!(conflicted.length && conflicted.every(isProtected))) {
+        await run("git", ["merge", "--abort"], { cwd: repo });
+        return promoteAsFinalist();
       }
-      await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
-      return "merged";
+      await must("git", ["checkout", "--ours", "--", ...conflicted], { cwd: repo });
+      await must("git", ["add", "--", ...conflicted], { cwd: repo });
+      await must("git", [...GIT_ID, "commit", "-q", "--no-edit"], { cwd: repo });
     }
-    return promoteAsFinalist();
+    if (sinceBase.some((f) => !isProtected(f))) {
+      // Main changed the product since this mutant was bred: make sure the combination still passes.
+      await run("npm", ["install", "--no-audit", "--no-fund"], { cwd: repo, timeoutMs: 10 * 60_000 });
+      const g = await gate(repo, "origin/main", species, { requireMutationFile: false });
+      if (!g.ok) {
+        log(`[${sp.id}] ${winner.arm_id} merges cleanly but fails checks on top of main; replaying as a finalist`);
+        await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
+        return promoteAsFinalist();
+      }
+    }
+    await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
+    const sha = (await must("git", ["rev-parse", "HEAD"], { cwd: repo })).trim();
+    await db.run("UPDATE arms SET merge_sha=?, merged_at=? WHERE species=? AND arm_id=?", [sha, now(), sp.id, winner.arm_id]).catch(() => {});
+    return "merged";
 
     async function promoteAsFinalist() {
     // Stale: rebase onto main and send the combination back to the nursery as a finalist.
@@ -458,6 +467,24 @@ export function makePipeline(d) {
     }
   }
 
+  /** Undo merges on main (newest first) for a rollback. Returns false if any revert conflicts. */
+  async function revertMerges(sp, repo, shas) {
+    if (!shas.length) return false;
+    await must("git", ["fetch", "-q", "origin"], { cwd: repo });
+    await must("git", ["checkout", "-q", "main"], { cwd: repo });
+    await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
+    for (const sha of shas) {
+      const r = await run("git", [...GIT_ID, "revert", "--no-edit", "-m", "1", sha], { cwd: repo });
+      if (r.code !== 0) {
+        await run("git", ["revert", "--abort"], { cwd: repo });
+        await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
+        return false;
+      }
+    }
+    await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
+    return true;
+  }
+
   /** Distil this cycle's failures into the species' LESSONS.md (committed to main). */
   async function updateLessons(sp, repo, species, items) {
     if (!items.length || DRY) return;
@@ -475,5 +502,5 @@ export function makePipeline(d) {
     await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
   }
 
-  return { spawnPR, closePRs, promotePR, updateLessons, agent, pendingWip };
+  return { spawnPR, closePRs, promotePR, revertMerges, updateLessons, agent, pendingWip };
 }

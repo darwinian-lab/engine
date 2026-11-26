@@ -35,7 +35,7 @@ async function state(env: Env): Promise<State> {
   if (cache && Date.now() - cache.loadedAt < 30_000) return cache;
   const [arms, stats, cfgRow] = await Promise.all([
     env.DB.prepare(
-      "SELECT arm_id, status, origin FROM arms WHERE species = ? AND status IN ('live','control','champion','nursery')",
+      "SELECT arm_id, status, origin FROM arms WHERE species = ? AND status IN ('live','control','champion','nursery','guard')",
     )
       .bind(env.SPECIES)
       .all<Arm>(),
@@ -49,7 +49,8 @@ async function state(env: Env): Promise<State> {
       .first<{ json: string }>(),
   ]);
   cache = {
-    arms: arms.results.filter((a) => a.status !== "nursery"),
+    // Nursery mutants and the previous champion kept as a rollback guard are reachable by simulated users only.
+    arms: arms.results.filter((a) => a.status !== "nursery" && a.status !== "guard"),
     all: arms.results,
     stats: stats.results,
     cfg: cfgRow ? (JSON.parse(cfgRow.json) as SpeciesConfig) : null,

@@ -255,6 +255,7 @@ const STATUS = {
   live: { label: "Competing for real visitors", color: "var(--st-live)" },
   nursery: { label: "In the nursery", color: "var(--st-nursery)" },
   control: { label: "Frozen control", color: "var(--st-control)" },
+  guard: { label: "Previous champion (rollback guard)", color: "var(--st-control)" },
   retired: { label: "Retired", color: "var(--st-retired)" },
   dead: { label: "Died of errors", color: "var(--st-dead)" },
   stillborn: { label: "Stillborn", color: "var(--st-stillborn)" },
@@ -338,6 +339,8 @@ function armTip(a) {
     <div class="t-row"><span>Lived</span><b>${a.status === "stillborn" ? "never deployed" : span(end - a.created_at)}</b></div>
     ${s ? `<div class="t-row"><span>Visitors (14 days)</span><b>${s.trials}</b></div><div class="t-row"><span>Success rate</span><b>${s.trials ? pct(s.successes / s.trials, 1) : "–"}</b></div>` : ""}
     ${D.sims && D.sims[a.arm_id] ? `<div class="t-row"><span>Simulated people (14 days)</span><b>${D.sims[a.arm_id].successes} of ${D.sims[a.arm_id].trials} succeeded</b></div>` : ""}
+    ${D.quality && D.quality[a.arm_id] ? `<div class="t-row"><span>Experience score</span><b>${D.quality[a.arm_id].mean.toFixed(0)} / 100 (${D.quality[a.arm_id].n} sessions)</b></div>` : ""}
+    ${D.pairs && D.pairs[a.arm_id] ? `<div class="t-row"><span>Side by side vs champion</span><b>${D.pairs[a.arm_id].wins} preferred, ${D.pairs[a.arm_id].losses} not, ${D.pairs[a.arm_id].ties} even</b></div>` : ""}
     ${a.revived_from ? `<div class="t-row"><span>Revival of</span><b class="mono">${esc(a.revived_from)}</b></div>` : ""}
     ${a.crossed_from ? `<div class="t-row"><span>Crossover of</span><b class="mono">${esc(a.crossed_from.replace(",", " × "))}</b></div>` : ""}
     ${D.pb[a.arm_id] != null ? `<div class="t-row"><span>Chance it's best</span><b>${pct(D.pb[a.arm_id])}</b></div>` : ""}
