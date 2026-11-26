@@ -296,7 +296,8 @@ export default {
   },
 
   async scheduled(ev: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(aggregate(env));
+    // Recount arm stats once an hour (every 15 minutes was most of the D1 read budget).
+    if (new Date(ev.scheduledTime).getUTCMinutes() < 15) ctx.waitUntil(aggregate(env));
     // The heartbeat of evolution (only the router with GH_DISPATCH_TOKEN, i.e. qr, keeps the clock):
     // a breeding cycle every EVOLVE_EVERY_H hours, simulated users every hour, the growth loop once a day.
     const t = new Date(ev.scheduledTime);

@@ -52,7 +52,7 @@ export async function aggregate(env: Env) {
             SUM(CASE WHEN name IN ('pageview','http_5xx') THEN 1 ELSE 0 END) AS requests,
             SUM(CASE WHEN name = 'http_5xx' THEN 1 ELSE 0 END) AS errors,
             SUM(CASE WHEN name = 'purchase' THEN COALESCE(value,0) ELSE 0 END) AS revenue
-     FROM events WHERE species = ? AND ts > ? GROUP BY arm_id`,
+     FROM events WHERE species = ? AND name IN ('pageview','http_5xx','purchase') AND ts > ? AND segment != 'sim' GROUP BY arm_id`,
   )
     .bind(sp, since)
     .all<{ arm_id: string; requests: number; errors: number; revenue: number }>();
@@ -75,7 +75,7 @@ export async function aggregate(env: Env) {
             SUM(CASE WHEN e.name IN ('pageview','http_5xx') THEN 1 ELSE 0 END) AS requests,
             SUM(CASE WHEN e.name = 'http_5xx' THEN 1 ELSE 0 END) AS errors
      FROM events e JOIN arms a ON a.species = e.species AND a.arm_id = e.arm_id
-     WHERE e.species = ? AND e.ts > ? AND a.status IN ('live','champion')
+     WHERE e.species = ? AND e.name IN ('pageview','http_5xx') AND e.ts > ? AND a.status IN ('live','champion')
      GROUP BY e.arm_id`,
   )
     .bind(sp, now - 3600_000)
