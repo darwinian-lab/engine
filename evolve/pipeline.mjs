@@ -383,7 +383,12 @@ export function makePipeline(d) {
     const prs = JSON.parse(winner.prs);
     const head = prs.at(-1).head;
     await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
-    const fresh = (await run("git", ["merge-base", "--is-ancestor", "origin/main", winner.git_ref], { cwd: repo })).code === 0;
+    // Fresh = main hasn't changed the product since this mutant was bred. Engine-owned files (LESSONS.md, the e2e
+    // harness, capabilities...) change on main every cycle; those alone must not force a finalist round, or a winner
+    // is rebased forever (seen: g1-fhb4 → r → rr → rrr).
+    const sinceBase = (await must("git", ["diff", "--name-only", `${winner.git_ref}...origin/main`], { cwd: repo })).split("\n").filter(Boolean);
+    const isProtected = (f) => (species.protected ?? []).some((p) => (p.endsWith("/") ? f.startsWith(p) : f === p));
+    const fresh = sinceBase.every(isProtected);
     if (fresh) {
       await must("git", ["checkout", "-q", "main"], { cwd: repo });
       await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
