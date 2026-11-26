@@ -340,8 +340,11 @@ export async function shootMarked({ url, routerKey = null, marks = [], outDir, n
     const page = await ctx.newPage();
     if (await load(page, url, 3)) return null;
     await annotate(page, marks);
+    // The whole page (up to a limit), so the marked spot is visible wherever it is.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const h = Math.min(await page.evaluate(() => document.documentElement.scrollHeight), 2600);
     const file = path.join(outDir, `${slug(name)}-today.jpg`);
-    await page.screenshot({ path: file, type: "jpeg", quality: 80 });
+    await page.screenshot({ path: file, type: "jpeg", quality: 78, fullPage: true, clip: { x: 0, y: 0, width: opts.viewport.width, height: h } });
     return { kind: "shot", role: "today", name, viewport, file, mime: "image/jpeg" };
   } finally {
     await browser.close();

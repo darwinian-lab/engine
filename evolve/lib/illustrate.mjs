@@ -19,7 +19,7 @@ export async function siteHtml(domain, p = "/", routerKey = null) {
 }
 
 export const MOCKUP_SPEC = `"page": "the existing path this idea changes or adds to (e.g. \\"/\\" or \\"/pricing\\"), or null for a new page",
- "where": "a CSS selector on that page today where the change goes (or null)",
+ "where": "a CSS selector for the one specific element on that page today that the change replaces or sits next to (a card, a form, a button; never main, body or a whole section), or null",
  "where_label": "a few words for that spot, e.g. \\"design panel goes here\\"",
  "mockup_html": "a complete, self-contained HTML document showing how it should look when done"`;
 
