@@ -318,7 +318,7 @@ ${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new
         return null;
       }
       await must("git", ["checkout", "-q", branch], { cwd: wt });
-      if (!cross && !fs.existsSync(path.join(runDir, "phased-plan.md"))) ghNotice(`${sp.id} ${armId} build`, "the builder skipped the planner (no phased-plan.md in the run folder)");
+      if (!cross && wip.state.builder !== "codex" && !fs.existsSync(path.join(runDir, "phased-plan.md"))) ghNotice(`${sp.id} ${armId} build`, "the builder skipped the planner (no phased-plan.md in the run folder)");
       await journal(sp.id, "progress", armId, `built (${(await commitsOf(wt, baseSha, "HEAD")).split("\n").length} commits); running checks`);
 
       // 3. Viability gates on the top head (protected files, tests, typecheck, build, end-to-end).
@@ -347,8 +347,8 @@ ${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new
       const prBodies = prBody;
 
       // 5. Automated PR review: Codex (charter) + a fresh Claude reviewer, feedback commits, up to N rounds.
-      // Review effort follows the size of the change: small tweaks get one round, big ones the full count.
-      const rounds = Math.min(cfg.prReviewRounds ?? 3, { small: 1, medium: 2 }[size] ?? 3);
+      // Review effort follows the size of the change: small and medium get two rounds, big ones the full count.
+      const rounds = Math.min(cfg.prReviewRounds ?? 3, { small: 2, medium: 2 }[size] ?? 3);
       const history = [];
       // A crossover that merged cleanly combines two already-reviewed changes: skip straight to the nursery.
       let approved = Boolean(cross && !crossResolved);
