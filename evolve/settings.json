@@ -115,7 +115,8 @@
     "minSims": 6,
     "graduateAt": 0.5,
     "fieldSize": 2,
-    "nurserySize": 6,
+    "nurseryMin": 6,
+    "nurseryMax": 12,
     "spawnPerCycle": 3,
     "nurseryMaxDays": 7,
     "fieldMaxDays": 21

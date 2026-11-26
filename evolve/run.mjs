@@ -480,6 +480,15 @@ async function cycle(sp) {
     return;
   }
   const nurseryNow = arms.filter((a) => a.status === "nursery").length;
+  // Nursery size follows simulation throughput: as many mutants as can each get a verdict (sessions + side-by-sides)
+  // within about a day. The champion takes ~25% of regular sessions as the yardstick.
+  {
+    const perHour = Number(simCfg.sessionsPerSpecies ?? 24);
+    const regularPerDay = perHour * 24 * (1 - (simCfg.pairShare ?? 0.3)) * 0.75;
+    const pairsPerDay = (perHour * 24 * (simCfg.pairShare ?? 0.3)) / 2;
+    const fit = Math.floor(Math.min(regularPerDay / (sel.minSimsPromote ?? 10), pairsPerDay / Math.max(1, sel.minPairs ?? 2)) / (sel.verdictSlack ?? 2));
+    sel.nurserySize = Math.max(sel.nurseryMin ?? 6, Math.min(sel.nurseryMax ?? 12, fit));
+  }
   const toSpawn = SPAWN_OVERRIDE != null ? SPAWN_OVERRIDE : SIM_ONLY ? 0 : DRY ? Math.min(1, sel.spawnPerCycle) : Math.max(0, Math.min(sel.spawnPerCycle, sel.nurserySize - nurseryNow));
   const dead = await db.all("SELECT * FROM arms WHERE species=? AND status IN ('retired','stillborn','dead') AND mutation IS NOT NULL", [sp.id]);
   // Winners that couldn't be merged are owed a re-implementation before anything else from the seed bank.
