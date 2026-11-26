@@ -66,8 +66,8 @@ const products = await listAll("/products?status=active&include=prices");
 const tokenName = "darwinian-checkout";
 let clientToken = process.env.PADDLE_CLIENT_TOKEN ?? "";
 if (!clientToken) {
+  const existing = (await listAll("/client-tokens").catch(() => [])).find((t) => t.name === tokenName && (t.status ?? "active") === "active");
   try {
-    const existing = (await listAll("/client-tokens?status=active")).find((t) => t.name === tokenName);
     clientToken = existing?.token ?? (DRY ? "(dry)" : (await paddle("POST", "/client-tokens", { name: tokenName, description: "Paddle.js on the species domains" })).data.token);
   } catch (e) {
     throw new Error(`Could not create a client-side token (${e.message}). Give the API key the client_token.write permission, or create one in Developer tools → Authentication and pass it as PADDLE_CLIENT_TOKEN.`);
