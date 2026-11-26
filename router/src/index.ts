@@ -17,6 +17,7 @@ export interface Env extends PayEnv {
   GH_DISPATCH_TOKEN?: string; // set on one router only: it is the experiment's clock
   DISPATCH_REPO?: string;
   EVOLVE_EVERY_H?: string;
+  FALLBACK_ORIGIN?: string; // the frozen control, served when the database is unreachable and nothing is cached
 }
 
 const BOT_RE =
@@ -32,32 +33,52 @@ interface State {
 }
 let cache: State | null = null;
 
+// The sites must stay up even when the database doesn't answer (e.g. the D1 free-tier daily cap): the last good
+// routing state is kept in memory and in the colo cache, and used when D1 fails.
+const STATE_KEY = (sp: string) => `https://dw-state.internal/${sp}`;
 async function state(env: Env): Promise<State> {
   if (cache && Date.now() - cache.loadedAt < 30_000) return cache;
-  const [arms, stats, cfgRow] = await Promise.all([
-    env.DB.prepare(
-      "SELECT arm_id, status, origin FROM arms WHERE species = ? AND status IN ('live','control','champion','nursery','guard')",
-    )
-      .bind(env.SPECIES)
-      .all<Arm>(),
-    env.DB.prepare(
-      "SELECT arm_id, segment, trials, successes FROM arm_stats WHERE species = ?",
-    )
-      .bind(env.SPECIES)
-      .all<ArmStat>(),
-    env.DB.prepare("SELECT json FROM species_config WHERE species = ?")
-      .bind(env.SPECIES)
-      .first<{ json: string }>(),
-  ]);
-  cache = {
-    // Nursery mutants and the previous champion kept as a rollback guard are reachable by simulated users only.
-    arms: arms.results.filter((a) => a.status !== "nursery" && a.status !== "guard"),
-    all: arms.results,
-    stats: stats.results,
-    cfg: cfgRow ? (JSON.parse(cfgRow.json) as SpeciesConfig) : null,
-    loadedAt: Date.now(),
-  };
-  return cache;
+  try {
+    const [arms, stats, cfgRow] = await Promise.all([
+      env.DB.prepare(
+        "SELECT arm_id, status, origin FROM arms WHERE species = ? AND status IN ('live','control','champion','nursery','guard')",
+      )
+        .bind(env.SPECIES)
+        .all<Arm>(),
+      env.DB.prepare("SELECT arm_id, segment, trials, successes FROM arm_stats WHERE species = ?")
+        .bind(env.SPECIES)
+        .all<ArmStat>(),
+      env.DB.prepare("SELECT json FROM species_config WHERE species = ?")
+        .bind(env.SPECIES)
+        .first<{ json: string }>(),
+    ]);
+    cache = {
+      // Nursery mutants and the previous champion kept as a rollback guard are reachable by simulated users only.
+      arms: arms.results.filter((a) => a.status !== "nursery" && a.status !== "guard"),
+      all: arms.results,
+      stats: stats.results,
+      cfg: cfgRow ? (JSON.parse(cfgRow.json) as SpeciesConfig) : null,
+      loadedAt: Date.now(),
+    };
+    await caches.default
+      .put(STATE_KEY(env.SPECIES), new Response(JSON.stringify(cache), { headers: { "cache-control": "max-age=604800", "content-type": "application/json" } }))
+      .catch(() => {});
+    return cache;
+  } catch (err) {
+    console.log("state: database unavailable, using last known routing", String(err));
+    if (cache) return { ...cache, loadedAt: Date.now() - 20_000 }; // retry the database in ~10 s
+    const saved = await caches.default.match(STATE_KEY(env.SPECIES)).catch(() => undefined);
+    if (saved) {
+      cache = { ...((await saved.json()) as State), loadedAt: Date.now() - 20_000 };
+      return cache;
+    }
+    // Nothing known at all: serve the frozen generation-0 control, untracked, until the database is back.
+    if (env.FALLBACK_ORIGIN) {
+      const ctrl = { arm_id: "g0-ctrl", status: "control", origin: env.FALLBACK_ORIGIN } as Arm;
+      return { arms: [ctrl], all: [ctrl], stats: [], cfg: null, loadedAt: Date.now() - 20_000, degraded: true } as State;
+    }
+    throw err;
+  }
 }
 
 function cookies(req: Request): Record<string, string> {
@@ -83,7 +104,7 @@ export async function logEvent(
   env: Env,
   e: { arm: string; visitor: string; segment: string; name: string; path?: string; value?: number; props?: unknown },
 ) {
-  await env.DB.prepare(
+  const ok = await env.DB.prepare(
     "INSERT INTO events (ts, species, arm_id, visitor, segment, name, path, value, props) VALUES (?,?,?,?,?,?,?,?,?)",
   )
     .bind(
@@ -97,7 +118,9 @@ export async function logEvent(
       e.value ?? null,
       e.props ? JSON.stringify(e.props).slice(0, 500) : null,
     )
-    .run();
+    .run()
+    .then(() => true, () => false); // analytics must never break the site
+  if (!ok) return;
   // Keep the incremental stats tables current (see migrations/0010). Never fail the event because of them.
   const t = Date.now();
   const money = e.name === "purchase" ? e.value ?? 0 : e.name === "refund" ? -(e.value ?? 0) : 0;
@@ -276,7 +299,7 @@ export default {
     if (!arm) {
       arm =
         chooseArm(st.arms, st.stats, segment, { controlShare: st.cfg?.controlShare ?? 0.1 }) ?? st.arms[0];
-      setCookies.push(`dw_arm=${arm.arm_id}; Path=/; Max-Age=${YEAR}; Secure; HttpOnly; SameSite=Lax`);
+      if (!(st as State & { degraded?: boolean }).degraded) setCookies.push(`dw_arm=${arm.arm_id}; Path=/; Max-Age=${YEAR}; Secure; HttpOnly; SameSite=Lax`);
     }
 
     const pay = { ready: payReady(env, st.cfg), paid: mayHavePaid(c, false) ? await paidSkus(env, visitor).catch(() => []) : [] };

@@ -1049,7 +1049,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && SEL) clo
 $("#refresh").addEventListener("click", () => load(SP, true));
 let rT;
 window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(() => D && render(), 200); });
-setInterval(() => { if (!document.hidden && !SEL) load(SP, true); }, 5 * 60 * 1000);
+setInterval(() => { if (!document.hidden && !SEL) load(SP, true); }, 30 * 60 * 1000); // each load reads a lot; data changes hourly anyway
 route();
 </script>
 </body>

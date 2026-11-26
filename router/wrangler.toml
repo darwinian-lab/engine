@@ -10,18 +10,18 @@ crons = ["*/15 * * * *"]
 
 [env.qr]
 name = "dw-router-qr"
-vars = { SPECIES = "qr", EVOLVE_EVERY_H = "2" }
+vars = { SPECIES = "qr", EVOLVE_EVERY_H = "2", FALLBACK_ORIGIN = "https://sp-qr-g0-ctrl.moha-98-1900.workers.dev" }
 routes = [{ pattern = "qrsthatlast.com", custom_domain = true }]
 d1_databases = [{ binding = "DB", database_name = "darwinian", database_id = "7af0faf8-b931-4de5-8d33-0dd72170b28e" }]
 
 [env.resume]
 name = "dw-router-resume"
-vars = { SPECIES = "resume" }
+vars = { SPECIES = "resume", FALLBACK_ORIGIN = "https://sp-resume-g0-ctrl.moha-98-1900.workers.dev" }
 routes = [{ pattern = "calmcv.com", custom_domain = true }]
 d1_databases = [{ binding = "DB", database_name = "darwinian", database_id = "7af0faf8-b931-4de5-8d33-0dd72170b28e" }]
 
 [env.wall]
 name = "dw-router-wall"
-vars = { SPECIES = "wall" }
+vars = { SPECIES = "wall", FALLBACK_ORIGIN = "https://sp-wall-g0-ctrl.moha-98-1900.workers.dev" }
 routes = [{ pattern = "kudospage.com", custom_domain = true }]
 d1_databases = [{ binding = "DB", database_name = "darwinian", database_id = "7af0faf8-b931-4de5-8d33-0dd72170b28e" }]
