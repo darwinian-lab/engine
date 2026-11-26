@@ -207,5 +207,23 @@
     "source": "discussion",
     "title": "Google review stars: schema.org markup on the wall page",
     "body": "Testimonial.to lists Google rich snippets as a paid feature. Add correct schema.org Review/AggregateRating markup on public wall pages (following Google's self-serving review rules honestly) and explain it on a landing page."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "Design pass: designed colour picker and controls, type and spacing scales",
+    "body": "The owner finds the UI too default and basic: the colour inputs are raw browser colour pickers, options are plain selects, and sizes and spacing are ad hoc.\n\nFollow DESIGN.md and the engine design standard:\n- Replace both `<input type=color>` with a designed colour picker: print-safe swatches, a custom popover (saturation/brightness area, hue slider, hex field), current value shown, a contrast warning when the code may not scan.\n- Replace the selects with segmented controls or option cards with a small live preview; style the checkbox.\n- Apply the type scale and spacing scale from DESIGN.md across the generator and key pages; make the live QR code the clear hero.\n- Design hover, focus, disabled, loading and error states.\n- Look at Figma/Linear colour pickers and Raycast for calm precision. Clean and intentional; no gradients or decoration.\n\nSize: redesign. Add the new components to DESIGN.md's inventory."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Design pass: visual template picker, designed controls, type and spacing scales",
+    "body": "The owner finds the UI too default and basic.\n\nFollow DESIGN.md and the engine design standard:\n- Template choice as visual cards with thumbnails rendered from the person's own content (not plain buttons), plus template accent colour swatches.\n- A calmer, more editorial editor: clear section hierarchy, designed add/reorder/remove, an autosave indicator.\n- Make the resume preview look professionally typeset (rhythm, tabular dates, consistent spacing).\n- Apply the type scale and spacing scale from DESIGN.md everywhere (today sizes like 13.5/15.5px are ad hoc).\n- Design hover, focus, empty, loading and error states. Look at Read.cv, iA Writer and Craft. Clean and intentional; no gradients or decoration.\n\nSize: redesign. Add the new components to DESIGN.md's inventory."
+  },
+  {
+    "species": "wall",
+    "source": "discussion",
+    "title": "Design pass: designed selects, colour picker and rating, type and spacing scales",
+    "body": "The owner finds the UI too default and basic.\n\nFollow DESIGN.md and the engine design standard:\n- Replace the select with a segmented control or option cards that show a live widget preview.\n- Add a designed accent colour picker for the widget (swatches + custom popover + hex) and a designed, keyboard-accessible star rating input on the collection form.\n- Embed code box with a copy button and a copied state.\n- Make testimonial cards beautiful and credible (quote, name, role, avatar), using the note tints sparingly.\n- Apply the type scale and spacing scale from DESIGN.md; design all states. Look at Tally, Cal.com and Linear. Clean and intentional; no gradients or decoration.\n\nSize: redesign. Add the new components to DESIGN.md's inventory."
   }
 ]

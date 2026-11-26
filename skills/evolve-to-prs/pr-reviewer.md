@@ -14,6 +14,7 @@ Do all gates:
 3. Try it: run `npm test`, `npm run typecheck`, `npm run e2e`. For any UI change you MUST also run `npm run dev` and
    use the browser tools at phone and laptop widths, including fast repeated clicks, edits right before actions,
    back/refresh, empty and error states. Label each claim `observed` or `reasoned`.
+3b. Judge the design of every visible change with the rubric in `methods/design.md` (and the species' `DESIGN.md`) from your own screenshots at both widths. A clear "no" on any rubric line is a blocking finding with a concrete fix.
 4. Check negative space: what should have changed but didn't (privacy page, copy, mobile layout, other entry points).
 5. For findings the author rejected earlier, accept the rejection when the reason holds; otherwise keep the finding
    and explain why the reason fails.

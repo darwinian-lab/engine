@@ -12,6 +12,9 @@ Implement one mutation end to end. There is no human anywhere in this loop: neve
 approval, make the best evidence-backed decision and record it. The engine that invoked you publishes the branch,
 opens the PR and runs PR review after you finish; you never push.
 
+Design quality is part of correctness: every visible change follows `methods/design.md` and the species'
+`DESIGN.md` (designed components, never browser defaults; intentional colour; clean, not flashy).
+
 No human reads this code. Selection (simulated and real people) decides whether the mutant lives. So the work must
 be correct and keep the charter. Follow the commit rules (`methods/commit-rules.md`) and keep the description short,
 but nobody enforces or reviews them: never spend time reshaping history or polishing text.

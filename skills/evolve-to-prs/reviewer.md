@@ -10,6 +10,7 @@ Given the brief's acceptance criteria, the phase section, base/head range, commi
 4. Check negative space: what should have changed but didn't (other entry points, copy, privacy page, mobile layout).
 5. Challenge test trigger, assertions, edges, fixtures, and plausible wrong implementations.
 6. Run checks where possible (`npm test`, `npm run typecheck`, `npm run e2e`; for UI changes open the local site with the browser tools and try the changed flows, including fast repeated clicks, edits right before actions, back/refresh, phone width); label each claim `observed` or `reasoned`.
+6b. For visible changes, judge design with the rubric in `methods/design.md` against your own screenshots at phone and laptop widths. Unstyled browser-default controls, off-token colours, missing states or anything on its "Never" list are findings (blocking when clearly below the bar).
 7. Check the phase integrates with phases already on the branch: contracts consumed as defined, no behavior left half-wired.
 8. Verify every applicable carried finding is resolved. A finding may be dismissed only with concrete evidence that its failure mechanism cannot occur.
 

@@ -9,6 +9,7 @@ Own exactly one phase. Follow `methods/implement-phase.md`, with these overrides
 - On reviewer findings, fix them with new commits on top.
 - Run acceptance and relevant repository checks. Fix failures caused by the change; record unavailable or independent failures with evidence.
 - Never push, publish, merge, delete, or force-add run artifacts.
+- For visible work, build to the brief's `## Design` section, the species' `DESIGN.md` and `methods/design.md`: designed controls (never browser defaults), tokens, all states, phone and laptop. Look at your screenshots and fix anything a careful designer wouldn't ship.
 - Use capabilities configured in `config.md` (e.g. code navigation) and follow its Extra guidance.
 
 Write `<run folder>/phase-<nn>-completion.md`: a short note of what was built, step-end SHAs, checks, deviations, and a `## Carried findings` disposition list. Run the site locally (`npm run dev`) and use the browser tools to click through the change at phone and laptop widths; keep screenshots in `<run folder>/visuals/`, never commit them. `npm run e2e` must pass. Return final SHA, step-end SHAs, checks, note path, carried-finding dispositions, risks, and fundamental blocker if any.

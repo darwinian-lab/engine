@@ -5,7 +5,7 @@ const SIZE_GUIDE = {
   medium: "MEDIUM: one meaningful feature or improvement (a new tool option, a better flow, a set of SEO landing pages). Under ~600 changed lines.",
   large: "LARGE: a bold capability that could change the product's trajectory (e.g. accounts, a paid tier with checkout, a new format). Keep it coherent and fully working.",
   feature: "FEATURE: a whole capability that competitors have and we lack (e.g. a design studio, bulk creation, an import flow, a widget gallery), built across several phases with its own UI, tests and a landing page. Thousands of changed lines are fine. It must be complete and polished, not a stub.",
-  redesign: "REDESIGN: change how the product looks and feels: theme, colours, typography, layout, navigation, illustrations, the main screen's composition. Take a real visual risk with a distinct point of view; don't just tweak spacing. Keep every existing feature working, accessible (contrast, focus, mobile) and fast.",
+  redesign: "REDESIGN: change how the product looks and feels: theme, colours, typography, layout, navigation, illustrations, the main screen's composition. Take a real visual risk with a distinct point of view; don't just tweak spacing. Clean and intentional, never flashy: no decorative gradients or AI-template looks; replace every browser-default control with a designed one. Update DESIGN.md (tokens, components) to match. Keep every existing feature working, accessible (contrast, focus, mobile) and fast.",
 };
 
 export function mutationPrompt({ species, brief, stage, stageEvent, size, lineage, siblings, insights, protectedFiles, backlog, simFeedback, revival }) {

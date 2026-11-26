@@ -80,7 +80,8 @@ You are building one mutant in a Darwinian software experiment. There is no huma
 
 1. Read CLAUDE.md, CHARTER.md, BRIEF.md and LESSONS.md in this repository first; they are the rules (CLAUDE.md
    applies to you too). Never modify protected files listed there or in CHARTER.md.
-2. Implement the work item below completely: plan it in phases, build each phase, test it, and look at the result in
+2. For anything visible, design first: read DESIGN.md and the design standard below, and look at how 2-3
+   well-designed products handle the same interaction. Then implement the work item below completely: plan it in phases, build each phase, test it, and look at the result in
    your browser (start the dev server as CLAUDE.md describes) on desktop and mobile widths before moving on.
 3. Add or update tests. Run npm test, npm run typecheck and npm run e2e, and fix everything until they pass.
 4. Do not commit and do not touch git history; the engine commits your work. Do not push.
@@ -90,7 +91,7 @@ Finish with a short plain summary of what you built (what a user will see, and a
 
 ${workItem}
 
-${fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "skills", "evolve-to-prs", "methods", "demo.md"), "utf8")}`);
+${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "skills", "evolve-to-prs", "methods", f), "utf8")).join("\n\n")}`);
     const out = path.join(wt, ".dw", "codex-build-out.txt");
     const s = cfg.sims ?? {};
     const profile = path.join(cfg.workdir, ".tmp", "agent-browser", rid(8));
