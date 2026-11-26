@@ -142,6 +142,7 @@ export const NURSERY_DEFAULTS = {
   // Pedigree: trusted ideas need less evidence to merge; untrusted ones must show a real gain, not just "not worse".
   // evidence scales the sims/pairs needed; maxRegress replaces the regression tolerance; minGain is the combined
   // gain (in points) it must reach. Kills ("clearly worse") and the charter audit are the same for every pedigree.
+  targetWeight: 2, // a mutant's own target metric counts this many times in its gain
   pedigree: {
     discussion: { evidence: 0.4, minPairs: 1, maxRegress: 0.35, maxQualityRegress: 0.3, minPairPref: 0.3, minGain: -3 },
     owner: { evidence: 0.6, minPairs: 1, maxRegress: 0.3, maxQualityRegress: 0.25, minPairPref: 0.35, minGain: -1 },
@@ -199,7 +200,7 @@ function erf(x) {
   return x >= 0 ? y : -y;
 }
 
-export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, money = {}, pedigree = {}, weeklyReal, now = Date.now(), opts = {} }) {
+export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, money = {}, pedigree = {}, target = {}, weeklyReal, now = Date.now(), opts = {} }) {
   const o = { ...NURSERY_DEFAULTS, ...opts, pedigree: { ...NURSERY_DEFAULTS.pedigree, ...(opts.pedigree ?? {}) } };
   // Arms without a known pedigree are judged as before (the legacy bar), so nothing changes for them.
   const bar = (id) => o.pedigree[pedigree[id]] ?? { evidence: 1, minPairs: o.minPairs, maxRegress: o.maxRegress, maxQualityRegress: o.maxQualityRegress, minPairPref: o.minPairPref, minGain: 0 };
@@ -240,7 +241,14 @@ export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, mone
     qreg[a.arm_id] = qualityRegress(quality[a.arm_id], quality[cid], o.scoreMargin);
     const p = pairs[a.arm_id];
     pairPref[a.arm_id] = p && p.n ? (1 + p.wins + 0.5 * p.ties) / (2 + p.n) : null;
-    gain[a.arm_id] = 100 * (mean(a.arm_id) - mean(cid)) + ((quality[a.arm_id]?.mean ?? 0) - (quality[cid]?.mean ?? 0)) + 20 * ((pairPref[a.arm_id] ?? 0.5) - 0.5) + moneyGain(a.arm_id, cid);
+    const parts = {
+      activation: 100 * (mean(a.arm_id) - mean(cid)),
+      experience: (quality[a.arm_id]?.mean ?? 0) - (quality[cid]?.mean ?? 0) + 20 * ((pairPref[a.arm_id] ?? 0.5) - 0.5),
+      checkouts: moneyGain(a.arm_id, cid),
+    };
+    // A mutant is judged mainly on the metric it set out to move; the others still count, at face value.
+    const t = target[a.arm_id];
+    gain[a.arm_id] = parts.activation + parts.experience + parts.checkouts + (t && t in parts ? (o.targetWeight - 1) * parts[t] : 0);
     const ma = cash[a.arm_id], mc = cash[cid];
     mreg[a.arm_id] = ma && mc && mc.starts >= o.moneyMinStarts ? probRegress({ trials: ma.trials, successes: ma.starts }, { trials: mc.trials, successes: mc.starts }, o.moneyMargin) : null;
   }
@@ -261,7 +269,10 @@ export function decideNursery({ arms, real, sims, quality = {}, pairs = {}, mone
   let promotions = [];
   if (!anySuccess) return { promote: null, promotions: [], retire: [], graduate: [], spawn: Math.max(0, Math.min(o.spawnPerCycle, o.nurserySize - arms.filter((a) => a.status === "nursery").length)), pb, pbeat: {}, combined, lambda, blind: true };
   if (champion && judged(champion.arm_id)) {
-    const contenders = arms.filter((a) => a.status !== "champion" && enough(a.arm_id) && notWorse(a.arm_id) && gain[a.arm_id] >= bar(a.arm_id).minGain); // and, all signals together, it looks at least as good
+    // Search mutants can't show a gain within days (search traffic takes weeks): they merge when not worse, and are
+    // judged later on real search entries (slow lane).
+    const minGain = (id) => (target[id] === "search" ? Math.min(0, bar(id).minGain) : bar(id).minGain);
+    const contenders = arms.filter((a) => a.status !== "champion" && enough(a.arm_id) && notWorse(a.arm_id) && gain[a.arm_id] >= minGain(a.arm_id)); // and, all signals together, it looks at least as good
     for (const a of contenders) loss[a.arm_id] = expectedLoss(combined[a.arm_id], combined[cid]);
     contenders.sort((x, y) => gain[y.arm_id] - gain[x.arm_id]);
     promotions = contenders.map((a) => a.arm_id);

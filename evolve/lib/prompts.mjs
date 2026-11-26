@@ -304,7 +304,13 @@ Pick a direction different from the siblings. Be concrete enough that a separate
 Answer with ONLY a JSON object:
 {"title": "max 8 words", "hypothesis": "what changes and why it should help real people (2-3 sentences)",
  "work_item": "the full work description for the builders: user-visible behaviour, scope, out of scope, constraints, risks",
- "acceptance_criteria": ["observable criteria"], "implements_issue": <issue number or null>, "size": "small|medium|large"}`;
+ "acceptance_criteria": ["observable criteria"], "implements_issue": <issue number or null>, "size": "small|medium|large",
+ "target_metric": "activation|experience|checkouts|search"}
+
+target_metric is the ONE thing this mutant is meant to improve, and it is judged mainly on it (the others are
+guardrails it must not hurt): "activation" = more people complete the core job; "experience" = the job feels easier,
+clearer, more trustworthy; "checkouts" = more people genuinely choose to pay; "search" = new or better pages that
+search engines and AI assistants send people to (judged slowly, on real search traffic).`;
 }
 
 export function buildPrompt({ workItemFile, baseSha, branch, runDir }) {

@@ -54,3 +54,29 @@ describe("pedigree", () => {
     expect(betterPedigree(null, "ideation")).toBe("ideation");
   });
 });
+
+describe("target metric", () => {
+  // The challenger moved checkouts a little and nothing else; the champion is level otherwise.
+  const level = {
+    arms,
+    real: {},
+    sims: { champ: { trials: 200, successes: 150 }, a: { trials: 200, successes: 150 } },
+    pairs: { a: { n: 4, wins: 2, losses: 2, ties: 0 } },
+    money: { champ: { sims: { trials: 200, starts: 10, buys: 0 } }, a: { sims: { trials: 200, starts: 13, buys: 0 } } },
+    weeklyReal: 0,
+    now,
+  };
+  it("a gain on the mutant's own target counts double", () => {
+    const plain = decideNursery({ ...level });
+    const aimed = decideNursery({ ...level, target: { a: "checkouts" } });
+    expect(aimed.gain.a).toBeCloseTo(plain.gain.a * 2, 5);
+    // An ideation mutant must gain 2 points: the small checkout lift is not enough unless checkouts were its aim.
+    expect(decideNursery({ ...level, pedigree: { a: "ideation" } }).promotions).not.toContain("a");
+    expect(decideNursery({ ...level, target: { a: "checkouts" }, pedigree: { a: "ideation" } }).promotions).toContain("a");
+  });
+  it("search mutants merge when not worse even from untrusted sources (judged later on search traffic)", () => {
+    const flat = { ...level, money: {} };
+    expect(decideNursery({ ...flat, pedigree: { a: "ideation" } }).promotions).not.toContain("a");
+    expect(decideNursery({ ...flat, pedigree: { a: "ideation" }, target: { a: "search" } }).promotions).toContain("a");
+  });
+});

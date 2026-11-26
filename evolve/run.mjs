@@ -229,12 +229,21 @@ async function insights(spId) {
     db.all("SELECT json_extract(props,'$.src') src, COUNT(DISTINCT visitor) n FROM events WHERE species=? AND ts>? AND name='pageview' GROUP BY src ORDER BY n DESC LIMIT 12", [spId, since]),
     db.all("SELECT detail FROM journal WHERE species=? AND kind='probe' ORDER BY ts DESC LIMIT 6", [spId]),
   ]);
+  // Slow signal for "search" mutants: which pages search engines and AI assistants actually send people to.
+  const searchIn = await db.all(
+    `SELECT path, json_extract(props,'$.src') src, COUNT(DISTINCT visitor) n FROM events
+     WHERE species=? AND ts>? AND name='pageview' AND segment!='sim'
+       AND json_extract(props,'$.src') IN ('google','bing','duckduckgo','yandex','chatgpt','perplexity','gemini','claude','copilot')
+     GROUP BY path, src ORDER BY n DESC LIMIT 15`,
+    [spId, now() - 28 * 86400_000],
+  ).catch(() => []);
   return [
     `Visitors last 7 days by device: ${seg.map((s) => `${s.segment} ${s.n}`).join(", ") || "none"}`,
     `Top pages: ${pages.map((p) => `${p.path} (${p.n})`).join(", ") || "none"}`,
     `Custom events: ${custom.map((c) => `${c.name.slice(2)} (${c.n})`).join(", ") || "none"}`,
     `Traffic sources (visitors): ${srcs.map((r) => `${r.src ?? "unknown"} ${r.n}`).join(", ") || "none"}`,
     `AI search visibility probes (latest): ${probes.map((p) => p.detail).join(" | ") || "none yet"}`,
+    `Pages that search engines / AI assistants sent real visitors to (28 days): ${searchIn.map((r) => `${r.path} ← ${r.src} ${r.n}`).join(", ") || "none yet"}`,
   ].join("\n");
 }
 
@@ -606,7 +615,8 @@ async function cycle(sp) {
   const pairs = champRow ? await pairStatsFor(db, sp.id, champRow.arm_id) : {};
   const money = await moneyStatsFor(db, sp.id).catch((e) => (log(`[${sp.id}] money stats unavailable: ${e.message}`), {}));
   const pedigree = await pedigreesFor(sp, arms, issues).catch((e) => (log(`[${sp.id}] pedigree unavailable: ${e.message}`), {}));
-  const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control" && a.status !== "guard"), real, sims, quality, pairs, money, pedigree, weeklyReal: weekly, opts: sel });
+  const target = Object.fromEntries(arms.map((a) => { try { return [a.arm_id, JSON.parse(a.work_item ?? "{}").target_metric ?? null]; } catch { return [a.arm_id, null]; } }).filter(([, t]) => t));
+  const dec = decideNursery({ arms: arms.filter((a) => a.status !== "control" && a.status !== "guard"), real, sims, quality, pairs, money, pedigree, target, weeklyReal: weekly, opts: sel });
   {
     const m = Object.entries(dec.cash ?? {}).filter(([, v]) => v.starts || v.buys || v.revenue);
     if (m.length) ghNotice(`${sp.id} money`, m.map(([id, v]) => `${id}: ${v.starts.toFixed(1)} checkout starts, ${v.buys.toFixed(1)} buys, $${v.revenue.toFixed(2)} real revenue`).join("; "));
