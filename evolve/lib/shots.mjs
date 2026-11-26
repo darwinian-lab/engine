@@ -112,7 +112,7 @@ const OVERLAY = `(() => {
   const css = document.createElement("style");
   css.textContent = ".__dw-box{position:absolute;border:3px solid #e5484d;border-radius:8px;box-shadow:0 0 0 4px rgba(229,72,77,.25);pointer-events:none;z-index:2147483646}" +
     ".__dw-tag{position:absolute;background:#e5484d;color:#fff;font:600 13px/1.25 system-ui,sans-serif;padding:4px 8px;border-radius:6px;max-width:280px;pointer-events:none;z-index:2147483647;box-shadow:0 2px 8px rgba(0,0,0,.25)}" +
-    ".__dw-cap{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:rgba(17,17,17,.88);color:#fff;font:600 16px/1.35 system-ui,sans-serif;padding:10px 16px;border-radius:10px;max-width:86vw;text-align:center;z-index:2147483647;pointer-events:none}" +
+    ".__dw-cap{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:rgba(17,17,17,.88);color:#fff;font:600 16px/1.35 system-ui,sans-serif;padding:10px 16px;border-radius:10px;max-width:86vw;text-align:center;z-index:2147483647;pointer-events:none}" +
     ".__dw-cur{position:fixed;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:rgba(229,72,77,.35);border:2px solid #e5484d;z-index:2147483647;pointer-events:none;transition:left .35s ease,top .35s ease,transform .15s}";
   const add = () => document.documentElement.appendChild(css);
   document.documentElement ? add() : document.addEventListener("DOMContentLoaded", add);
@@ -124,9 +124,10 @@ const OVERLAY = `(() => {
       Object.assign(b.style, { left: r.left + sx - 6 + "px", top: r.top + sy - 6 + "px", width: r.width + 12 + "px", height: r.height + 12 + "px" });
       const t = document.createElement("div"); t.className = "__dw-tag"; t.textContent = (n ? n + ". " : "") + (label || "");
       document.body.append(b, t);
-      // The label straddles the box's top edge at its right end, so it hides as little of the page as possible.
-      const tw = t.offsetWidth;
-      Object.assign(t.style, { left: Math.max(4, Math.min(r.right + sx + 6 - tw, Math.min(document.documentElement.scrollWidth, innerWidth + sx) - tw - 4)) + "px", top: Math.max(2, r.top + sy - 20) + "px" });
+      // The label sits just outside the box (above, or below when there's no room), never on the marked element.
+      const tw = t.offsetWidth, th = t.offsetHeight;
+      const top = r.top - th - 12 >= 0 ? r.top + sy - th - 12 : r.bottom + sy + 12;
+      Object.assign(t.style, { left: Math.max(4, Math.min(r.left + sx - 6, Math.min(document.documentElement.scrollWidth, innerWidth + sx) - tw - 4)) + "px", top: top + "px" });
     },
     caption(text) {
       let c = document.querySelector(".__dw-cap");

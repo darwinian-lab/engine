@@ -201,10 +201,10 @@ function visualComment(items, spec, parentId, armId, errors) {
   const byName = {};
   for (const it of items) if (it.kind === "shot" && it.url) (byName[it.name] ??= {})[it.role] = it;
   const w = (it) => (it.viewport === "mobile" ? 240 : 460);
-  const img = (it, alt) => (it ? `<img src="${it.url}" width="${w(it)}" alt="${alt}">${it.note ? `<br><sub>${it.note}</sub>` : ""}` : "<sub>(not captured)</sub>");
+  const img = (it, alt, other) => (it ? `<img src="${it.url}" width="${w(it)}" alt="${alt}">${it.note ? `<br><sub>${it.note}</sub>` : ""}` : alt === "before" && other ? "<sub>New: this screen did not exist before.</sub>" : "<sub>(not captured)</sub>");
   const shots = (spec?.shots ?? []).map((sh) => {
     const p = byName[sh.name] ?? {};
-    return `**${sh.name}**${sh.caption ? `: ${sh.caption}` : ""} <sub>(${sh.viewport ?? "desktop"}, \`${sh.path ?? "/"}\`)</sub>\n\n| Before (\`${parentId}\`) | After (\`${armId}\`) |\n|---|---|\n| ${img(p.before, "before")} | ${img(p.after, "after")} |`;
+    return `**${sh.name}**${sh.caption ? `: ${sh.caption}` : ""} <sub>(${sh.viewport ?? "desktop"}, \`${sh.path ?? "/"}\`)</sub>\n\n| Before (\`${parentId}\`) | After (\`${armId}\`) |\n|---|---|\n| ${img(p.before, "before", p.after)} | ${img(p.after, "after")} |`;
   });
   const gif = items.find((i) => i.kind === "gif" && i.role === "flow-after" && i.url), mp4 = items.find((i) => i.kind === "video" && i.role === "flow-after" && i.url);
   const gifB = items.find((i) => i.kind === "gif" && i.role === "flow-before" && i.url);
@@ -222,6 +222,9 @@ async function showcase(sp, armId, origin, parent, { demo = null, workItem = "",
   try {
     const dir = path.join(cfg.workdir, ".tmp", "demo", `${sp.id}-${armId}`);
     const firstPath = (d) => d?.shots?.[0]?.path ?? d?.flow?.path ?? "/";
+    // Claim the arm first, so the backfill doesn't showcase it a second time while this runs.
+    const claimed = await db.all("UPDATE arms SET demo=? WHERE species=? AND arm_id=? AND (demo IS NULL OR demo NOT LIKE '%\"pending\"%') RETURNING arm_id", [JSON.stringify({ pending: true, at: Date.now() }), sp.id, armId]);
+    if (!claimed.length) return log(`[${sp.id}] ${armId}: showcase already running`);
     let spec = validDemo(demo) ? demo : null;
     if (!spec) spec = await draftDemo({ workItem, diff, html: await pageHtml(origin, "/") }).catch((e) => (log(`demo draft failed: ${e.message}`), null));
     if (!validDemo(spec)) return log(`[${sp.id}] ${armId}: no usable demo`);

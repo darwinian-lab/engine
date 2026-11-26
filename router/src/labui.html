@@ -875,7 +875,7 @@ function drawChanges(a, parent) {
   const pair = (n) => {
     const b = shots.find((m) => m.name === n && m.role === "before"), af = shots.find((m) => m.name === n && m.role === "after");
     const one = af || b;
-    const cell = (m, label) => `<figure class="ba ${m ? m.viewport : ""}"><figcaption>${label}</figcaption>${m ? `<a href="${mediaUrl(m)}" target="_blank" rel="noopener"><img loading="lazy" src="${mediaUrl(m)}" alt="${esc(label + ": " + n)}"></a>${m.note ? `<div class="faint" style="font-size:12.5px">${esc(m.note)}</div>` : ""}` : `<div class="nophoto">Not captured</div>`}</figure>`;
+    const cell = (m, label) => `<figure class="ba ${m ? m.viewport : ""}"><figcaption>${label}</figcaption>${m ? `<a href="${mediaUrl(m)}" target="_blank" rel="noopener"><img loading="lazy" src="${mediaUrl(m)}" alt="${esc(label + ": " + n)}"></a>${m.note ? `<div class="faint" style="font-size:12.5px">${esc(m.note)}</div>` : ""}` : `<div class="nophoto">${label.startsWith("Before") && af ? "New: this screen did not exist before" : "Not captured"}</div>`}</figure>`;
     return `<div class="change"><div class="change-t"><b>${esc(n)}</b>${one && one.caption ? ` <span class="muted">${esc(one.caption)}</span>` : ""} <span class="faint mono" style="font-size:12px">${esc((one && one.page) || "")}</span></div>
       <div class="ba-row">${cell(b, parent ? `Before (${parent.arm_id})` : "Before")}${cell(af, "After (this mutant)")}</div></div>`;
   };
