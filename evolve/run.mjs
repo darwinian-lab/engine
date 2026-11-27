@@ -757,6 +757,28 @@ async function cycle(sp) {
     }
   }
   if (!DRY) {
+    // A mutant bred on an older main than the champion's is compared against improvements it never had, so a
+    // loss says little about its own change. Before killing such a mutant, replay it onto the current main once
+    // and give that a fair trial (at most refreshPerCycle per species and cycle; never a refresh of a refresh).
+    let refreshes = 0;
+    const isProt = (f) => (species.protected ?? []).some((p) => (p.endsWith("/") ? f.startsWith(p) : f === p));
+    const stale = async (a) => {
+      await run("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
+      const r = await run("git", ["diff", "--name-only", `${a.git_ref}...origin/main`], { cwd: repo });
+      return r.code === 0 && r.out.split("\n").filter(Boolean).some((f) => !isProt(f));
+    };
+    for (const r of [...dec.retire]) {
+      const a = arms.find((x) => x.arm_id === r.arm_id);
+      if (!a?.prs || !/^lost to the champion/.test(r.cause) || /u$/.test(a.arm_id) || refreshes >= (cfg.refreshPerCycle ?? 3) || !(await stale(a).catch(() => false))) continue;
+      refreshes++;
+      const nid = await pipe.replayOntoMain(sp, repo, species, st, a, "refresh").catch((e) => (log(`[${sp.id}] refresh of ${a.arm_id} failed: ${e.message}`), null));
+      if (!nid || nid === "failed") continue;
+      const why = `refreshed onto the current main as ${nid}: it was bred on an older main, so "${r.cause}" compared it with improvements it never had`;
+      await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=0.5, revivable=0 WHERE species=? AND arm_id=?", [now(), why, st.generation, sp.id, a.arm_id]);
+      await journal(sp.id, "refresh", nid, `${a.arm_id} ${why}`);
+      await deleteWorker(`sp-${sp.id}-${a.arm_id}`);
+      dec.retire = dec.retire.filter((x) => x !== r);
+    }
     for (const r of dec.retire) {
       const a = arms.find((x) => x.arm_id === r.arm_id);
       await db.run("UPDATE arms SET status='retired', retired_at=?, cause=?, died_gen=?, final_score=?, revivable=? WHERE species=? AND arm_id=?", [now(), r.cause, st.generation, r.score ?? 0.3, isRevivable(r.cause) ? 1 : 0, sp.id, r.arm_id]);

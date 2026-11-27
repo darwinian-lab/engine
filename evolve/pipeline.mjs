@@ -487,7 +487,7 @@ ${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new
       const conflicted = (await run("git", ["diff", "--name-only", "--diff-filter=U"], { cwd: repo })).out.split("\n").filter(Boolean);
       if (!(conflicted.length && conflicted.every(isProtected))) {
         await run("git", ["merge", "--abort"], { cwd: repo });
-        return promoteAsFinalist();
+        return replayOntoMain(sp, repo, species, st, winner, "finalist");
       }
       await must("git", ["checkout", "--ours", "--", ...conflicted], { cwd: repo });
       await must("git", ["add", "--", ...conflicted], { cwd: repo });
@@ -500,17 +500,30 @@ ${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new
       if (!g.ok) {
         log(`[${sp.id}] ${winner.arm_id} merges cleanly but fails checks on top of main; replaying as a finalist`);
         await must("git", ["reset", "-q", "--hard", "origin/main"], { cwd: repo });
-        return promoteAsFinalist();
+        return replayOntoMain(sp, repo, species, st, winner, "finalist");
       }
     }
     await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
     const sha = (await must("git", ["rev-parse", "HEAD"], { cwd: repo })).trim();
     await db.run("UPDATE arms SET merge_sha=?, merged_at=? WHERE species=? AND arm_id=?", [sha, now(), sp.id, winner.arm_id]).catch(() => {});
     return "merged";
+  }
 
-    async function promoteAsFinalist() {
+  /**
+   * Replay a mutant's change onto the current main as a new arm in the nursery.
+   * - finalist: it won selection but couldn't merge cleanly; the replay must confirm itself (quick lane).
+   * - refresh: it was about to be killed, but it was bred on an older main than the champion's, so it was judged
+   *   against improvements it never saw. The replay gets a fair, full trial against the current champion.
+   */
+  async function replayOntoMain(sp, repo, species, st, winner, mode = "finalist") {
+    const repoSlug = `${cfg.github.org}/${sp.repo}`;
+    const prs = winner.prs ? JSON.parse(winner.prs) : [];
+    const title = String(prs.at(-1)?.title ?? String(winner.hypothesis ?? winner.arm_id).split(":")[0]).replace(/ \((rebased|refreshed) onto main\)/g, "").slice(0, 100);
+    const refresh = mode === "refresh";
+    await must("git", ["fetch", "-q", "--tags", "origin"], { cwd: repo });
+
     // Stale: rebase onto main and send the combination back to the nursery as a finalist.
-    const finalist = `${winner.arm_id}r`;
+    const finalist = `${winner.arm_id}${refresh ? "u" : "r"}`;
     const wt = path.join(cfg.workdir, "wt", `${sp.id}-${finalist}`);
     const branch = `arm/${finalist}`;
     const base = (await must("git", ["rev-parse", "origin/main"], { cwd: repo })).trim();
@@ -533,7 +546,7 @@ ${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new
       }
       if (!g.ok) return "failed";
       await gitLock(() => must("git", ["push", "-q", "-f", "origin", `${branch}:refs/heads/${branch}`], { cwd: wt }));
-      const { url } = await openPR(repoSlug, { base: "main", head: branch, title: `${title} (rebased onto main)`, body: `Finalist: \`${winner.arm_id}\` won selection, but main moved since it was bred. This is the same change rebased onto main. It must confirm itself against the current champion before it is merged.${prs.length ? `\n\nOriginal: ${prs.map((p) => p.url).join(", ")}` : ""}` });
+      const { url } = await openPR(repoSlug, { base: "main", head: branch, title: `${title} (${refresh ? "refreshed" : "rebased"} onto main)`, body: `${refresh ? `Refresh: \`${winner.arm_id}\` was bred on an older main than the champion's, so it was compared against improvements it never had. This is the same change replayed onto the current main, for a fair trial against the champion.` : `Finalist: \`${winner.arm_id}\` won selection, but main moved since it was bred. This is the same change rebased onto main. It must confirm itself against the current champion before it is merged.`}${prs.length ? `\n\nOriginal: ${prs.map((p) => p.url).join(", ")}` : ""}` });
       const headSha = (await must("git", ["rev-parse", "HEAD"], { cwd: wt })).trim();
       const tag = `fossil/${sp.id}/${finalist}`;
       await gitLock(async () => {
@@ -546,15 +559,14 @@ ${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new
       await db.run(
         `INSERT INTO arms (species, arm_id, origin, status, generation, parent, git_ref, hypothesis, created_at, mutation, size, diffstat, revivable, issue, prs, work_item, finalist_of, shot_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [sp.id, finalist, origin, "nursery", st.generation + 1, winner.arm_id, tag, winner.hypothesis, now(), winner.mutation, winner.size, JSON.stringify(numstat((await run("git", ["diff", "--numstat", base, headSha], { cwd: wt })).out)), 1, winner.issue, JSON.stringify(fprs), winner.work_item, winner.arm_id, now()],
+        [sp.id, finalist, origin, "nursery", st.generation + 1, winner.arm_id, tag, winner.hypothesis, now(), winner.mutation, winner.size, JSON.stringify(numstat((await run("git", ["diff", "--numstat", base, headSha], { cwd: wt })).out)), 1, winner.issue, JSON.stringify(fprs), winner.work_item, refresh ? null : winner.arm_id, now()],
       );
-      for (const p of prs) await closePR(repoSlug, p.number, `Won selection, but main moved since it was bred. Continued as a finalist rebased onto main: ${url}`).catch((e) => log(`close PR: ${e.message}`));
-      return "finalist";
+      for (const p of prs) await closePR(repoSlug, p.number, refresh ? `Bred on an older main than the champion's, so this comparison wasn't fair. Continued, replayed onto the current main: ${url}` : `Won selection, but main moved since it was bred. Continued as a finalist rebased onto main: ${url}`).catch((e) => log(`close PR: ${e.message}`));
+      return refresh ? finalist : "finalist";
     } finally {
       await gitLock(() => run("git", ["worktree", "remove", "--force", wt], { cwd: repo }));
     }
-    }
-  }
+      }
 
   /** Undo merges on main (newest first) for a rollback. Returns false if any revert conflicts. */
   async function revertMerges(sp, repo, shas) {
@@ -591,5 +603,5 @@ ${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new
     await must("git", ["push", "-q", "origin", "main"], { cwd: repo });
   }
 
-  return { spawnPR, closePRs, promotePR, revertMerges, updateLessons, agent, pendingWip };
+  return { spawnPR, closePRs, promotePR, replayOntoMain, revertMerges, updateLessons, agent, pendingWip };
 }
