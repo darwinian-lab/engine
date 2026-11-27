@@ -1,0 +1,27 @@
+name: report
+# Real-visitor report (on demand): visitors, likely humans, goal events, checkouts, sources, entry pages per site.
+on:
+  workflow_dispatch:
+    inputs:
+      days: { description: "Days to cover", required: false, default: "7" }
+permissions: { contents: read }
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DW_GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+      DW_LAB_KEY: ${{ secrets.DW_LAB_KEY }}
+      GH_TOKEN: ${{ secrets.DW_GH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Clone species
+        run: |
+          WORK="${DW_WORKDIR:-$GITHUB_WORKSPACE/../work}"; mkdir -p "$WORK"; echo "DW_WORKDIR=$WORK" >> $GITHUB_ENV
+          for r in species-qr species-resume species-wall; do git -c url."https://x-access-token:${DW_GH_TOKEN}@github.com/".insteadOf="https://github.com/" clone -q --depth 1 "https://github.com/darwinian-lab/$r.git" "$WORK/$r"; done
+      - run: node evolve/report.mjs --days ${{ inputs.days || '7' }}
