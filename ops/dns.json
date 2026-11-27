@@ -54,6 +54,24 @@
       "type": "TXT",
       "name": "_dmarc.kudospage.com",
       "content": "v=DMARC1; p=none;"
+    },
+    {
+      "zone": "qrsthatlast.com",
+      "type": "TXT",
+      "name": "qrsthatlast.com",
+      "content": "google-site-verification=tdWe6dx_djtz0dJ8tWKO7-qKtT4GrqLzQgY-jVh1OFI"
+    },
+    {
+      "zone": "calmcv.com",
+      "type": "TXT",
+      "name": "calmcv.com",
+      "content": "google-site-verification=0HjXK82qUgU_76Grb3Exyxkkh7NVEtfN3R72pSqi6ho"
+    },
+    {
+      "zone": "kudospage.com",
+      "type": "TXT",
+      "name": "kudospage.com",
+      "content": "google-site-verification=s54xbzCigM2M1LhdebaH9ANi6izWoOBTyog_gz9C1a8"
     }
   ]
 }
