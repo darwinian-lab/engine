@@ -68,6 +68,17 @@ async function agent(cfg, prompt, profileDir, device, workDir, label = "sim") {
 
 let modelUnavailable = false;
 
+/**
+ * Is the arm still served to simulated people? Evolve cycles retire and promote arms while sims run; a session
+ * that lands on a gone arm (HTTP 410) measures nothing about the arm and must not count as a failure.
+ */
+export class ArmGone extends Error {}
+async function armServed(sp, token, armId) {
+  const r = await fetch(`https://${sp.domain}/_dw/sim?t=${token}&arm=${encodeURIComponent(armId)}&vid=preflight-${rid(6)}&next=/`, { redirect: "manual" }).catch(() => null);
+  return !(r && r.status === 410);
+}
+const GONE = /arm is gone|HTTP 410|\b410 (error|page)|returned 410|page with a 410|a 410\b/i;
+
 /** Run one simulated person with one or more browsers (each its own MCP server and profile). */
 async function agentWith(cfg, prompt, servers, workDir, label = "sim") {
   const s = cfg.sims;
@@ -117,6 +128,7 @@ export async function runPair({ cfg, db, sp, challenger, reference, persona }) {
   const [first, second] = flip ? [reference, challenger] : [challenger, reference];
   const device = persona.device;
   const entry = (arm, n) => `https://${sp.domain}/_dw/sim?t=${token}&arm=${encodeURIComponent(arm.arm_id)}&vid=${sid}v${n}&next=/`;
+  if (!(await armServed(sp, token, challenger.arm_id)) || !(await armServed(sp, token, reference.arm_id))) return null;
   const email = `${persona.id.split("-")[0]}${sid}+clerk_test@example.com`;
   let j = null;
   try {
@@ -128,6 +140,7 @@ export async function runPair({ cfg, db, sp, challenger, reference, persona }) {
     fs.rmSync(base, { recursive: true, force: true });
   }
   if (!j || ![0, 1, 2].includes(Number(j.prefer))) return null;
+  if (GONE.test(JSON.stringify(j))) return null; // one side went away mid-comparison
   const pick = Number(j.prefer) === 0 ? null : (Number(j.prefer) === 1) === !flip ? challenger.arm_id : reference.arm_id;
   await db.run("INSERT INTO sim_pairs (ts, species, arm_a, arm_b, persona, winner, strength, why, report, agent) VALUES (?,?,?,?,?,?,?,?,?,?)",
     [Date.now(), sp.id, challenger.arm_id, reference.arm_id, persona.id, pick, Number(j.strength) || 1, String(j.why ?? "").slice(0, 600), JSON.stringify({ flip, ...j }).slice(0, 8000), cfg.sims.agent ?? "claude"]);
@@ -220,6 +233,7 @@ export async function runSession({ cfg, db, sp, stageEvent, arm, persona }) {
       const profileDir = path.join(base, `profile-${profile}`);
       const vid = `${sid}p${profile}`;
       if (fresh) vids.push(`sim-${vid}`);
+      if (fresh && !(await armServed(sp, token, arm.arm_id))) throw new ArmGone(arm.arm_id);
       const url = fresh
         ? `https://${sp.domain}/_dw/sim?t=${token}&arm=${encodeURIComponent(arm.arm_id)}&vid=${vid}&next=/`
         : `https://${sp.domain}/`;
@@ -242,6 +256,8 @@ export async function runSession({ cfg, db, sp, stageEvent, arm, persona }) {
     fs.rmSync(base, { recursive: true, force: true });
   }
 
+  // The arm was retired while this person was using it: nothing was measured about the arm.
+  if (phases.some((p) => GONE.test(`${p.gave_up ?? ""} ${(p.stuck ?? []).join(" ")}`))) throw new ArmGone(arm.arm_id);
   // What did the router see this simulated person do?
   await new Promise((r) => setTimeout(r, 1500));
   const evs = vids.length
@@ -386,7 +402,11 @@ export async function runSims({ cfg, db, sp, stageEvent, arms, personas, budget,
       }
       return;
     }
-    const r = await runSession({ cfg, db, sp, stageEvent, arm, persona });
+    const r = await runSession({ cfg, db, sp, stageEvent, arm, persona }).catch((e) => {
+      if (e instanceof ArmGone) return (log(`[${sp.id}] sim ${persona.id} on ${arm.arm_id}: discarded, the arm was retired while it ran`), null);
+      throw e;
+    });
+    if (!r) return;
     log(`[${sp.id}] sim ${persona.id} on ${arm.arm_id}: ${r.outcome} (stage ${r.stage_hit ? "hit" : "missed"}, done ${r.done}, rating ${r.rating ?? "-"}, ${r.minutes} min)`);
     results.push(r);
   }).catch((e) => {
