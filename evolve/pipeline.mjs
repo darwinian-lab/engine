@@ -422,9 +422,6 @@ ${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new
         await new Promise((res) => setTimeout(res, 5000));
       }
       await photograph(sp, armId, origin);
-      // Before/after shots and the flow video, also posted on the PR.
-      const demoDiff = (await run("git", ["diff", baseSha, "HEAD", "--", ".", ":!package-lock.json"], { cwd: wt })).out;
-      await showcase?.(sp, armId, origin, parent, { demo: result.demo ?? null, workItem, diff: demoDiff, pr: topPr });
       const issueNo = hyp.implements_issue ?? parseImplements(workItem);
       await db.run(
         // Upsert: a resumed mutant may already have a row from an earlier, interrupted attempt.
@@ -433,6 +430,9 @@ ${["design.md", "demo.md"].map((f) => fs.readFileSync(path.join(path.dirname(new
          ON CONFLICT (species, arm_id) DO UPDATE SET origin=excluded.origin, status=excluded.status, generation=excluded.generation, parent=excluded.parent, git_ref=excluded.git_ref, hypothesis=excluded.hypothesis, mutation=excluded.mutation, size=excluded.size, diffstat=excluded.diffstat, audit=excluded.audit, personas=excluded.personas, shot_at=excluded.shot_at, revived_from=excluded.revived_from, revivable=excluded.revivable, issue=excluded.issue, prs=excluded.prs, work_item=excluded.work_item, crossed_from=excluded.crossed_from, tournament=excluded.tournament, variant=excluded.variant, retired_at=NULL, cause=NULL`,
         [sp.id, armId, origin, "nursery", st.generation + 1, parent.arm_id, tag, `${hyp.title}: ${hyp.hypothesis}`.slice(0, 600), now(), mutationText, size, JSON.stringify(diffstat), JSON.stringify(auditInfo), null, now(), ctx.revival?.root ?? null, 1, issueNo, JSON.stringify(prs), JSON.stringify(hyp), cross ? `${cross.a.arm_id},${cross.b.arm_id}` : null, tour?.id ?? null, direction ? direction.slice(0, 300) : null],
       );
+      // Before/after shots and the flow video, also posted on the PR (after the arm row exists: showcase claims it).
+      const demoDiff = (await run("git", ["diff", baseSha, "HEAD", "--", ".", ":!package-lock.json"], { cwd: wt })).out;
+      await showcase?.(sp, armId, origin, parent, { demo: result.demo ?? null, workItem, diff: demoDiff, pr: topPr });
       await commentPR(repoSlug, topPr.number, `Approved by automated review and deployed to the nursery as \`${armId}\`. Simulated people judge it next; it is merged only if it wins selection.`);
       if (issueNo) await comment(repoSlug, issueNo, `Mutant \`${armId}\` is trying this: ${topPr.url}`).catch(() => {});
       await journal(sp.id, "spawn", armId, `${cross ? `crossover of ${cross.a.arm_id} × ${cross.b.arm_id}, ` : ""}${size} ${ctx.revival ? `revival of ${ctx.revival.root}, ` : ""}mutation of ${parent.arm_id}${tour ? ` (tournament ${tour.id}, variant ${tour.idx + 1}/${tour.n}: ${String(direction).slice(0, 80)})` : ""} as ${prs.map((p) => `#${p.number}`).join(" + ")}: ${hyp.title}. ${hyp.hypothesis}`);

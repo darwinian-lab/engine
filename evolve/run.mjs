@@ -746,11 +746,15 @@ async function cycle(sp) {
   if (dec.blind) await journal(sp.id, "note", null, "no simulated person or visitor succeeded on any arm this cycle; that usually means the measurement is broken, so no one was promoted, graduated or retired");
   ghNotice(`${sp.id} cycle`, `stage ${st.stage}, gen ${st.generation}, ${arms.length} alive, ${weekly} real visitors/wk, sim weight ${dec.lambda.toFixed(2)}, promote ${(dec.promotions ?? []).join(",") || "-"}, graduate ${dec.graduate.join(",") || "-"}, retire ${dec.retire.length}`);
   if (!DRY && Object.keys(dec.pb).length) {
-    const ids = Object.keys(dec.pb);
-    await db.run(
-      `INSERT INTO pb_history (ts, species, arm_id, pbest, trials, successes) VALUES ${ids.map(() => "(?,?,?,?,?,?)").join(",")}`,
-      ids.flatMap((id) => [now(), sp.id, id, dec.pb[id], Math.round(dec.combined[id].trials), Math.round(dec.combined[id].successes)]),
-    ).catch((e) => log(`pb history: ${e.message}`));
+    const all = Object.keys(dec.pb);
+    // D1 allows 100 bound parameters per statement: 16 rows of 6 at a time.
+    for (let i = 0; i < all.length; i += 16) {
+      const ids = all.slice(i, i + 16);
+      await db.run(
+        `INSERT INTO pb_history (ts, species, arm_id, pbest, trials, successes) VALUES ${ids.map(() => "(?,?,?,?,?,?)").join(",")}`,
+        ids.flatMap((id) => [now(), sp.id, id, dec.pb[id], Math.round(dec.combined[id].trials), Math.round(dec.combined[id].successes)]),
+      ).catch((e) => log(`pb history: ${e.message}`));
+    }
   }
   if (!DRY) {
     for (const r of dec.retire) {
