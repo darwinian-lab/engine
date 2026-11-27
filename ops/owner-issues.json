@@ -1,6 +1,24 @@
 [
   {
     "species": "wall",
+    "source": "discussion",
+    "title": "Testimonial request templates by industry (search pages)",
+    "body": "Agreed with the owner: we need real search visitors this week. Build /templates/<industry> pages with ready-to-send testimonial request messages (email, SMS/WhatsApp, in-person script, follow-up reminder) for about 20 kinds of business people search for: coach, consultant, freelancer, agency, photographer, wedding vendor, salon/barber, personal trainer, therapist/clinic (privacy-aware wording), real estate agent, contractor/home services, restaurant/cafe, bakery, tutor/teacher, SaaS, online course creator, ecommerce shop, dentist, lawyer/accountant, nonprofit.\n\nEach page: 3-5 templates with copy buttons, when to ask, what makes a testimonial convincing for that industry (specific outcome, permission), and one clear next step: 'Collect them with a free Kudospage link' (creates a wall). Index page /templates. Unique title/description/H1, internal links, all in sitemap.xml. target_metric: search."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "QR code generator pages for each use (search pages)",
+    "body": "Agreed with the owner: we need real search visitors this week. Build /qr-code-for/<use> landing pages for the uses people search: wifi, restaurant menu, business card (vCard), wedding, Instagram, WhatsApp, Google review link, YouTube, PDF link, event/ticket link, real estate sign, product packaging, flyer/poster, email, phone call, SMS, website link, Linktree-style link page, App Store link, payment link (static link only, no handling of money).\n\nEach page: the generator right at the top, preset to that type (same rendering rules: personal data rendered locally, downloads match what is on screen), then a short honest how-to for that use (what to encode, size to print, where people usually place it, common mistakes, does it expire: no, it's static). Unique title/description/H1, links to related uses, all in sitemap.xml. target_metric: search."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Resume examples for 40 job titles (search pages)",
+    "body": "Agreed with the owner: we need real search visitors this week. Build /examples/<job-title> pages for about 40 common job titles people search with 'resume example' / 'resume sample' (barista, cashier, nurse, teacher, software engineer, data analyst, customer service, sales associate, administrative assistant, project manager, accountant, graphic designer, marketing manager, warehouse worker, receptionist, server, retail manager, electrician, truck driver, student/first job, career change, etc.).\n\nEach page: a complete, realistic example resume rendered with one of our templates (clearly marked as an example, invented person), 5-8 short practical tips for that job (what to put first, example bullets with numbers marked as examples, skills worth listing), and a big 'Use this example' button that opens the builder prefilled with it (the visitor's own draft is never overwritten without asking: offer 'replace' or 'open as new'). An index page /examples lists them by category. Unique title/description/H1 per page, internal links between related jobs, all pages in sitemap.xml. No thin pages: every page must be genuinely useful on its own. target_metric: search."
+  },
+  {
+    "species": "wall",
     "title": "Let me sign in instead of bookmarking a private admin link",
     "body": "Owner request. Today a wall is managed through a private link that people must bookmark; if they lose it (new phone, cleared browser, another device) they lose their wall. Simulated users hit this too.\n\nUse the engine's accounts capability (Clerk, see BRIEF.md: `clerkHead`, `currentUser`) so people can sign in and see all their walls from any device. Keep it optional and fast: creating a wall without an account should keep working, and existing private links must keep working. Offer to attach a wall to an account (e.g. right after creating it, or from the manage page)."
   },
