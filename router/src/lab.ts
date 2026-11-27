@@ -7,6 +7,7 @@
 import type { Env } from "./index";
 import { probBest, type ArmStat } from "./bandit";
 import LAB_HTML from "./labui.html";
+import { growthToken } from "./growthapi";
 
 const DAY = 86400_000;
 const YEAR_S = 60 * 60 * 24 * 365;
@@ -196,6 +197,7 @@ export async function snapshot(env: Env, sp: string) {
     }),
     backlog: backlogRow ? { updated_at: backlogRow.updated_at, issues: parse(backlogRow.json) ?? [] } : null,
     growth: growthRows,
+    growthAgentToken: env.LAB_KEY ? await growthToken(env.LAB_KEY) : null,
     quality: (() => {
       const by: Record<string, number[]> = {};
       for (const r of simRows as any[]) if (r.score != null && r.outcome !== "error" && r.ts > Date.now() - 14 * DAY) (by[r.arm_id] ??= []).push(r.score);

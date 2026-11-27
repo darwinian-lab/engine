@@ -5,6 +5,7 @@
 import { chooseArm, bestByMean, type Arm, type ArmStat } from "./bandit";
 import { matchEvents, type SpeciesConfig } from "./config";
 import { aggregate } from "./aggregate";
+import { growthApi } from "./growthapi";
 import { lab, isOwner } from "./lab";
 import { TRACKER_JS } from "./tracker";
 import { handlePay, mayHavePaid, paidSkus, payReady, type PayEnv } from "./pay";
@@ -234,6 +235,7 @@ export default {
       });
     }
     if (url.pathname === "/_dw/lab" || url.pathname.startsWith("/_dw/lab/")) return lab(req, env);
+    if (url.pathname.startsWith("/_dw/growth/")) return growthApi(req, env);
     if (url.pathname === "/_dw/health") return new Response("ok");
     // IndexNow ownership proof: /<key>.txt at the root (key derived from the lab key; the evolve loop does the same).
     if (/^\/[0-9a-f]{32}\.txt$/.test(url.pathname) && env.LAB_KEY) {

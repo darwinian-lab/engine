@@ -837,10 +837,13 @@ function drawGrowth() {
     <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" data-copy>Copy text</button><button type="button" class="btn" data-act="posted">Mark posted</button><button type="button" class="btn" data-act="skip">Skip</button></div>` : ""}</li>`;
   const live = g.filter((it) => it.status === "live" || it.status === "retired").sort((a, b) => b.humans - a.humans);
   const building = g.filter((it) => it.status === "proposed" && it.kind === "owned");
-  $("#growth").innerHTML = summary
+  const agent = D.growthAgentToken ? `<details style="margin:0 0 14px"><summary style="cursor:pointer;font-size:13.5px">Acquisition agent access</summary><p class="faint" style="font-size:13px;margin:6px 0">Give this token to the Claude session that posts as the brand. With it, it can read this queue, mark posts, register its own posts for tracking and read real-human results (<code>/_dw/growth/queue</code>, <code>/mark</code>, <code>/ref</code>, <code>/stats</code>, header <code>Authorization: Bearer …</code>). Treat it like a password.</p><div style="display:flex;gap:8px;align-items:center"><code id="gtok" style="font-size:12px;filter:blur(4px)">${esc(D.growthAgentToken)}</code><button type="button" class="btn" id="gtokshow">Show</button><button type="button" class="btn" id="gtokcopy">Copy</button></div></details>` : "";
+  $("#growth").innerHTML = agent + summary
     + `<h3 style="font-size:14px;margin:6px 0">Ready to post (${queue.length})</h3>${queue.length ? `<ul class="probes">${queue.map((it) => item(it, true)).join("")}</ul>` : `<p class="empty">Nothing waiting.</p>`}`
     + (building.length ? `<h3 style="font-size:14px;margin:14px 0 6px">Landing pages being built (${building.length})</h3><ul class="probes">${building.map((it) => item(it, false)).join("")}</ul>` : "")
     + `<h3 style="font-size:14px;margin:14px 0 6px">Running and finished (${live.length})</h3>${live.length ? `<ul class="probes">${live.slice(0, 30).map((it) => item(it, false)).join("")}</ul>` : `<p class="empty">None yet.</p>`}`;
+  $("#gtokshow")?.addEventListener("click", () => { $("#gtok").style.filter = "none"; });
+  $("#gtokcopy")?.addEventListener("click", (e) => { navigator.clipboard?.writeText(D.growthAgentToken); e.target.textContent = "Copied"; });
   $("#growth").querySelectorAll("li[data-g]").forEach((li) => {
     const it = g.find((x) => x.id === li.dataset.g);
     li.querySelector("[data-copy]")?.addEventListener("click", async (e) => { await navigator.clipboard.writeText(it.body || ""); e.target.textContent = "Copied"; });
