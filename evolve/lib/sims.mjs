@@ -234,8 +234,14 @@ export async function runSession({ cfg, db, sp, stageEvent, arm, persona }) {
       const vid = `${sid}p${profile}`;
       if (fresh) vids.push(`sim-${vid}`);
       if (fresh && !(await armServed(sp, token, arm.arm_id))) throw new ArmGone(arm.arm_id);
+      // Someone who was sent a link (a customer asked for a testimonial) opens that link, not the home page.
+      let next = "/";
+      if (fresh && ph.actor && lastShare) {
+        const m = String(lastShare).match(new RegExp(`https?://(?:www\\.)?${sp.domain.replace(/\./g, "\\.")}(/[^\\s"'<>)\\]]*)`, "i"));
+        if (m) next = m[1];
+      }
       const url = fresh
-        ? `https://${sp.domain}/_dw/sim?t=${token}&arm=${encodeURIComponent(arm.arm_id)}&vid=${vid}&next=/`
+        ? `https://${sp.domain}/_dw/sim?t=${token}&arm=${encodeURIComponent(arm.arm_id)}&vid=${vid}&next=${encodeURIComponent(next)}`
         : `https://${sp.domain}/`;
       const prompt = simPrompt({
         persona, phase: ph, actor: ph.actor, device, url, email,
