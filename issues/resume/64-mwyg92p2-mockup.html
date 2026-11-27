@@ -1,0 +1,85 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Import a resume | CalmCV</title><style>
+:root{--desk:#e6ebf0;--sheet:#fff;--ink:#16202a;--ink-2:#4a5866;--ink-3:#7a8794;--rule:#cdd5dd;--teal:#0e6b6b;--teal-2:#0a5555;--wash:#dceaea;--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--serif:Georgia,"Times New Roman",serif;--r:8px}
+*{box-sizing:border-box}body{margin:0;background:var(--desk);color:var(--ink);font:400 16px/1.55 var(--sans);overflow-x:clip}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.top{display:flex;align-items:center;gap:24px;height:68px}.mark{font-family:var(--serif);font-weight:600;font-size:22px;color:var(--ink);text-decoration:none}
+.top nav{margin-left:auto;display:flex;gap:22px}.top nav a{color:var(--ink-2);text-decoration:none;font-weight:500;font-size:15px}
+h1{font-family:var(--serif);font-weight:500;font-size:clamp(28px,3.4vw,40px);line-height:1.1;margin:8px 0 10px}
+h2{font-family:var(--serif);font-weight:500;font-size:24px;margin:0 0 6px}
+p{margin:0 0 14px}.intro p{color:var(--ink-2);margin-bottom:22px}.small{font-size:14px}.muted{color:var(--ink-3)}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 20px;border-radius:999px;border:0;background:var(--teal);color:#fff;font:650 15px var(--sans);cursor:pointer;white-space:nowrap}
+.btn.quiet{background:var(--sheet);color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--rule)}
+label{display:block;font-weight:600;font-size:13.5px;color:var(--ink-2);margin:14px 0 6px}
+input,textarea{width:100%;font:inherit;font-size:15.5px;padding:10px 12px;border:1.5px solid var(--rule);border-radius:var(--r);background:#fff;color:var(--ink)}
+.studio{display:grid;grid-template-columns:400px minmax(0,1fr);gap:40px;align-items:start;padding-bottom:40px}
+@media(max-width:980px){.studio{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--sheet);border-radius:14px;padding:6px 20px 16px}
+.panel-head{display:flex;justify-content:space-between;padding:12px 0 6px;font-size:13.5px;color:var(--ink-3)}
+.link{background:none;border:0;color:var(--ink-3);padding:0;font:inherit;font-size:13.5px;text-decoration:underline}
+.imp{background:var(--wash);border-radius:12px;padding:16px;margin:8px 0 14px}
+.imp h2{font-size:20px}
+.tabs{display:flex;gap:6px;margin:10px 0}.tabs span{font:600 14px var(--sans);padding:8px 12px;border-radius:999px;color:var(--ink-2)}.tabs .on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(22,32,42,.12)}
+.drop{border:2px dashed var(--teal);border-radius:var(--r);background:#fff;padding:14px;text-align:center;font-size:14px;color:var(--ink-2)}
+.file{display:flex;align-items:center;gap:10px;background:#fff;border-radius:var(--r);padding:10px 12px;font-size:14px;margin-top:10px}
+.file b{font-weight:650}.priv{font-size:13px;color:var(--ink-2);margin:10px 0 0}
+.found{margin-top:14px;background:#fff;border-radius:12px;padding:4px 14px}
+.found h3{font-size:15px;margin:12px 0 2px;font-weight:650}
+.row{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid #e9edf1;font-size:14.5px}
+.row:first-of-type{border-top:0}
+.row .k{flex:0 0 78px;color:var(--ink-3);font-size:13px}.row .v{flex:1;min-width:0}
+.row .v input{padding:6px 8px;font-size:14.5px}
+.tag{font-weight:600;font-size:12px;color:var(--teal);background:var(--wash);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.tag.chk{color:#8a5a00;background:#fbefd3}
+.acts{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.desk .paper{background:#fff;max-width:760px;margin:0 auto;aspect-ratio:1/1.4142;box-shadow:0 1px 2px rgba(22,32,42,.08),0 30px 60px -30px rgba(22,32,42,.35);padding:6.5% 7.5%;font:11.2px/1.5 var(--serif);overflow:hidden}
+.paper p{margin:3px 0}.paper ul{margin:4px 0;padding-left:16px}
+.nm{font-size:2.3em;font-weight:600;line-height:1.05}.sub{color:#56606a}
+.rh{font-weight:700;font-size:1.1em;font-variant:small-caps;letter-spacing:.04em;border-bottom:1px solid #1b1f24;margin:1.4em 0 .5em}
+.rr{display:flex;justify-content:space-between;gap:8px}.rr span{color:#56606a}
+.bar{display:flex;gap:6px;margin-bottom:16px;align-items:center}.bar span{font:600 14px var(--sans);padding:8px 12px;border-radius:999px;color:var(--ink-2)}.bar .on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(22,32,42,.12)}.bar .btn{margin-left:auto}
+.foot{padding:24px;color:var(--ink-3);font-size:14px}
+</style></head><body>
+<header class="wrap top"><a class="mark" href="#">CalmCV</a><nav><a href="#">Examples</a><a href="#">Pricing</a><a href="#">Why it's free</a></nav></header>
+<main><div class="wrap studio">
+<div>
+<div class="intro"><h1>Write your resume calmly. Download it free.</h1><p>No account, no trial that turns into a monthly charge. Fill in the sections, pick a template, save the PDF.</p></div>
+<div class="panel">
+<div class="panel-head"><span>Saved in this browser</span><button class="link">Start over</button></div>
+<section class="imp" data-note="Import an existing resume">
+<h2>Start from a resume you already have</h2>
+<p class="small muted" style="margin:0">PDF or pasted text, including a LinkedIn PDF export.</p>
+<div class="tabs"><span class="on">PDF</span><span>Paste text</span></div>
+<div class="drop">Drop a PDF here or <b style="color:var(--teal)">choose a file</b></div>
+<div class="file"><span>📄</span><span><b>Priya-Nair-resume.pdf</b><br><span class="muted small">2 pages · read in 0.4 s</span></span></div>
+<p class="priv">🔒 Read on your device. Your file is never uploaded.</p>
+</section>
+<div class="found" data-note="Check what we found">
+<h3>We found 5 sections. Quick check:</h3>
+<div class="row"><span class="k">Name</span><span class="v"><input value="Priya Nair" aria-label="Name"></span><span class="tag">Found</span></div>
+<div class="row"><span class="k">Email</span><span class="v"><input value="priya.nair@example.com" aria-label="Email"></span><span class="tag">Found</span></div>
+<div class="row"><span class="k">Phone</span><span class="v"><input value="" placeholder="Not found" aria-label="Phone"></span><span class="tag chk">Add</span></div>
+<div class="row"><span class="k">Summary</span><span class="v">Operations analyst with 6 years in logistics…</span><span class="tag">Found</span></div>
+<div class="row"><span class="k">Experience</span><span class="v">3 roles, 9 bullets</span><span class="tag">Found</span></div>
+<div class="row"><span class="k">Education</span><span class="v">1 entry (dates unclear)</span><span class="tag chk">Check</span></div>
+<div class="row"><span class="k">Skills</span><span class="v">12 skills</span><span class="tag">Found</span></div>
+<div class="acts"><button class="btn">Fill the builder</button><button class="btn quiet">Cancel</button></div>
+<p class="small muted" style="margin:10px 0 8px">You can edit everything afterwards.</p>
+</div>
+</div>
+</div>
+<div class="desk">
+<div class="bar"><span class="on">Classic</span><span>Modern</span><span>Minimal</span><button class="btn">Download PDF</button></div>
+<div class="paper">
+<div class="nm">Priya Nair</div><p class="sub">Operations Analyst</p><p class="sub">priya.nair@example.com · Leeds, UK</p>
+<div class="rh">Summary</div><p>Operations analyst with 6 years in logistics, focused on cutting delivery delays and reporting costs clearly.</p>
+<div class="rh">Experience</div>
+<div class="rr"><b>Operations Analyst, Northline Freight</b><span>2021 – Present</span></div>
+<ul><li>Cut late deliveries by 18% by rebuilding the weekly routing review.</li><li>Built a cost dashboard used by four depot managers.</li></ul>
+<div class="rr"><b>Planning Assistant, Harbor &amp; Co</b><span>2018 – 2021</span></div>
+<ul><li>Scheduled 40+ shipments a week across three carriers.</li></ul>
+<div class="rh">Education</div><div class="rr"><b>BSc Business Management, University of Leeds</b><span></span></div>
+<div class="rh">Skills</div><p>Excel, SQL, Power BI, Forecasting, Vendor management</p>
+</div></div>
+</div></main>
+<footer class="wrap foot">© 2026 CalmCV. Your resume is saved in your own browser.</footer>
+</body></html>
