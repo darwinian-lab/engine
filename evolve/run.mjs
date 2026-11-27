@@ -152,7 +152,7 @@ async function photograph(sp, armId, origin) {
   try {
     const dir = path.join(cfg.workdir, ".tmp", "shots", `${sp.id}-${armId}`);
     const items = await capture({ origin, routerKey: cfg.routerKey, pages: sp.screenPages ?? ["/"], outDir: dir });
-    const n = await storeMedia(db, sp.id, armId, items);
+    const n = (await storeMedia(db, sp.id, armId, items)).length;
     await db.run("UPDATE arms SET shot_at=? WHERE species=? AND arm_id=?", [now(), sp.id, armId]);
     fs.rmSync(dir, { recursive: true, force: true });
     log(`[${sp.id}] photographed ${armId}: ${n} files`);
