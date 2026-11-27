@@ -129,15 +129,17 @@
     "pairShare": 0.3,
     "agent": "codex",
     "model": "haiku",
-    "sessionsPerSpecies": 36,
-    "concurrency": 6,
+    "sessionsPerSpecies": 60,
+    "concurrency": 10,
     "phaseMinutes": 10,
     "maxTurns": 45,
     "actionsPerPhase": 25,
     "happyAt": 4,
     "browser": "chrome",
     "mobileDevice": "iPhone 15",
-    "mcpCommand": "playwright-mcp"
+    "mcpCommand": "playwright-mcp",
+    "codexModel": "gpt-6-luna",
+    "codexEffort": "low"
   },
   "growth": {
     "perRun": 4,

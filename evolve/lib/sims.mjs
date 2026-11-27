@@ -66,6 +66,8 @@ async function agent(cfg, prompt, profileDir, device, workDir, label = "sim") {
   return agentWith(cfg, prompt, [{ name: "browser", profileDir, device }], workDir, label);
 }
 
+let modelUnavailable = false;
+
 /** Run one simulated person with one or more browsers (each its own MCP server and profile). */
 async function agentWith(cfg, prompt, servers, workDir, label = "sim") {
   const s = cfg.sims;
@@ -80,10 +82,18 @@ async function agentWith(cfg, prompt, servers, workDir, label = "sim") {
       return ["-c", `mcp_servers.${name}.default_tools_approval_mode="approve"`, "-c", `mcp_servers.${name}.command=${JSON.stringify(s.mcpCommand ?? "playwright-mcp")}`, "-c", `mcp_servers.${name}.args=${toml}`,
         "-c", `mcp_servers.${name}.startup_timeout_sec=60`, "-c", `mcp_servers.${name}.tool_timeout_sec=120`];
     });
+    // A cheaper model for the volume (settings sims.codexModel / codexEffort). If the account can't use it, fall
+    // back to the default model for the rest of the run instead of losing every session.
+    const model = s.codexModel && !modelUnavailable ? s.codexModel : null;
     const cmd = ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only", "-c", 'approval_policy="never"',
-      ...(s.codexModel ? ["-m", s.codexModel] : []), ...mcp, "-o", out, prompt];
+      ...(model ? ["-m", model] : []), ...(s.codexEffort ? ["-c", `model_reasoning_effort="${s.codexEffort}"`] : []), ...mcp, "-o", out, prompt];
     const r = await run(cmd[0], cmd.slice(1), { cwd: workDir, timeoutMs: (s.phaseMinutes ?? 10) * servers.length * 60_000, agent: true, echoPrefix: `[${label} codex]` });
     const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : r.out;
+    if (model && r.code !== 0 && /model[^\n]{0,80}(not found|not supported|does not exist|unknown|unavailable|not available|invalid)/i.test(`${r.out}\n${r.err}`)) {
+      modelUnavailable = true;
+      console.log(`sims: model ${model} is not available on this account; using Codex's default model`);
+      return agentWith(cfg, prompt, servers, workDir, label);
+    }
     return { ...r, text };
   }
   const mcpFile = path.join(workDir, `mcp-${rid(6)}.json`);
