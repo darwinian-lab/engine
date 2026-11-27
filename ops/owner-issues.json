@@ -243,5 +243,65 @@
     "source": "discussion",
     "title": "Design pass: designed selects, colour picker and rating, type and spacing scales",
     "body": "The owner finds the UI too default and basic.\n\nFollow DESIGN.md and the engine design standard:\n- Replace the select with a segmented control or option cards that show a live widget preview.\n- Add a designed accent colour picker for the widget (swatches + custom popover + hex) and a designed, keyboard-accessible star rating input on the collection form.\n- Embed code box with a copy button and a copied state.\n- Make testimonial cards beautiful and credible (quote, name, role, avatar), using the note tints sparingly.\n- Apply the type scale and spacing scale from DESIGN.md; design all states. Look at Tally, Cal.com and Linear. Clean and intentional; no gradients or decoration.\n\nSize: redesign. Add the new components to DESIGN.md's inventory."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Switch CalmCV Pro to a membership ($6/month or $39/year)",
+    "body": "The owner wants freemium with a Pro membership, not a one-time price. species.json now has `pro_monthly` ($6/month) and `pro_yearly` ($39/year); `pro_pass` ($9 once) is being retired.\n\n- Every Pro purchase button opens the membership (monthly default, yearly shown with its saving); a paid check accepts `pro_monthly`, `pro_yearly` and legacy `pro_pass`.\n- /pricing, /terms, /refunds and every Pro mention: describe Pro as a membership, cancel in one click, what stays when it ends (everything made stays yours and downloadable as PDF).\n- Don't market it as cheap or \"no trap\": describe what Pro does for a job hunt.\n- Tests for both SKUs and the legacy SKU."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "Positioning: Print with confidence",
+    "body": "Positioning test (one of three; selection decides). Lead the home page, meta title/description, /pricing and the generator with this promise, and make it true in the product:\n\n*The QR maker for codes that go on paper and have to keep working for years.* Every code is scan-tested before download (decode the rendered code in the browser and show pass/fail, contrast and size checks), print-ready at the right size, and Pro watches each code's destination and emails before customers hit a dead link.\n\nNot the pitch: low price, \"no sign-up\", \"no trap\". Build the visible proof (scan check on every download, a print-size guide in the flow) as part of this change. Size: redesign."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "Positioning: Your counter, sorted (QR kits for venues)",
+    "body": "Positioning test (one of three; selection decides). Lead the home page, meta title/description and /pricing with:\n\n*QR kits for cafés, salons, shops and venues*: menu, Wi-Fi, Google reviews, socials and payments as matching, printable signs, made in one place in a few minutes.\n\nBuild the visible proof: a \"venue kit\" flow that makes 3-5 matching printable signs (table tent, counter card, window sticker) from one set of details, with print-ready PDFs. Not the pitch: low price, \"no sign-up\". Size: redesign."
+  },
+  {
+    "species": "qr",
+    "source": "discussion",
+    "title": "Positioning: On-brand QR codes without a designer",
+    "body": "Positioning test (one of three; selection decides). Lead the home page, meta title/description and /pricing with:\n\n*Codes that look like your brand*: your colours, logo and frame, in a minute, still scanning reliably.\n\nBuild the visible proof: the design studio front and centre with a live preview and a scan check, a few ready-made on-brand styles, and a saved brand kit (Pro). Not the pitch: low price, \"no sign-up\". Size: redesign."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Positioning: Tailor every application in minutes",
+    "body": "Positioning test (one of three; selection decides). Job seekers say the hardest part is tailoring to each job (41%). Lead the home page, meta title/description and /pricing with:\n\n*Paste a job ad, get a version of your resume for that job*: matched skills, reordered bullets, a matching cover letter, and a record of what you sent where.\n\nBuild the visible proof: a tailoring flow from a pasted job ad (local, honest about what it does) that creates a job-specific version. Free: one tailored version; Pro membership: unlimited versions, cover letters, tracker. Not the pitch: \"free\", \"no account\", \"no paywall\". Size: redesign."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Positioning: See what the robot sees (honest ATS check)",
+    "body": "Positioning test (one of three; selection decides). Lead the home page, meta title/description and /pricing with:\n\n*See exactly what an applicant tracking system reads from your resume*, instead of a made-up score, and fix what breaks (lost accents, merged columns, missing dates, unreadable headings).\n\nBuild the visible proof: an ATS view that extracts the text from the downloaded PDF (or an uploaded one) in the browser and shows it side by side with the design, with concrete fixes. Not the pitch: \"free\", \"no account\". Size: redesign."
+  },
+  {
+    "species": "resume",
+    "source": "discussion",
+    "title": "Positioning: A resume that looks professionally typeset",
+    "body": "Positioning test (one of three; selection decides). Lead the home page, meta title/description and /pricing with:\n\n*Calm, beautiful, print-perfect resumes*, and a guided writer that turns duties into results.\n\nBuild the visible proof: the template gallery as the first thing people see (rendered from example content), excellent typography, and the bullet improver in the editor. Not the pitch: \"free\", \"no account\". Size: redesign."
+  },
+  {
+    "species": "wall",
+    "source": "discussion",
+    "title": "Positioning: Testimonials from real-world customers",
+    "body": "Positioning test (one of three; selection decides). Senja and Testimonial.to are built for online businesses. Lead the home page, meta title/description and /pricing with:\n\n*Testimonials for local and service businesses*: collect them in person (a counter QR card, a text message), show them next to your Google reviews, on your site in minutes.\n\nBuild the visible proof: printable counter card + text-message ask in the first-run flow, and a widget layout that sits well beside a Google rating. Not the pitch: low price, \"no sign-up\". Size: redesign."
+  },
+  {
+    "species": "wall",
+    "source": "discussion",
+    "title": "Positioning: We get you the testimonials",
+    "body": "Positioning test (one of three; selection decides). The hard part is asking. Lead the home page, meta title/description and /pricing with:\n\n*We get you testimonials, not just a place to put them*: ready-made ask messages, the right moment to ask, reminders, and a form customers actually finish.\n\nBuild the visible proof: an \"ask\" flow after creating a wall (pick a template by situation, copy or share, a reminder link) and show completion on the manage page. Not the pitch: low price, \"no sign-up\". Size: redesign."
+  },
+  {
+    "species": "wall",
+    "source": "discussion",
+    "title": "Positioning: Testimonials that help you get found",
+    "body": "Positioning test (one of three; selection decides). Lead the home page, meta title/description and /pricing with:\n\n*Customer words that bring visitors*: walls and widgets search engines and AI assistants can read (real text in the page, review markup), so testimonials help you get found, not only reassure people already there.\n\nBuild the visible proof: an embed option that renders real HTML (not only an iframe), honest schema.org markup, and a simple explanation with a before/after of what a search engine sees. Not the pitch: low price, \"no sign-up\". Size: redesign."
   }
 ]
