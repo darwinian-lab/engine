@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { d1 } from "./lib/d1.mjs";
+import crypto from "node:crypto";
 import { loadConfig } from "./lib/config.mjs";
 
 const args = process.argv.slice(2);
@@ -53,6 +54,18 @@ for (const sp of cfg.species) {
   const arms = await db.all(`SELECT arm_id, COUNT(DISTINCT visitor) v FROM events WHERE species=? AND name='pageview' AND ${R} AND ts>? GROUP BY arm_id ORDER BY v DESC LIMIT 10`, [sp.id, since]);
   p(`**Visitors by arm:** ${arms.map((r) => `${r.arm_id} ${r.v}`).join(", ") || "-"}`);
   p("");
+}
+
+// The growth agent API (same numbers the acquisition agent sees): real humans per source.
+if (cfg.labKey) {
+  const tok = crypto.createHmac("sha256", cfg.labKey).update("dw-growth-agent").digest("hex");
+  const r = await fetch("https://kudospage.com/_dw/growth/stats?days=" + days, { headers: { authorization: `Bearer ${tok}` } }).catch((e) => ({ ok: false, status: e.message }));
+  p("## Real humans by source (growth agent API)");
+  if (!r.ok) p(`API error: ${r.status}`);
+  else {
+    const j = await r.json();
+    for (const sp of ["qr", "resume", "wall"]) p(`- **${sp}:** ${(j[sp]?.bySource ?? []).map((x) => `${x.source} ${x.humans}`).join(", ") || "-"}`);
+  }
 }
 
 const md = out.join("\n");
