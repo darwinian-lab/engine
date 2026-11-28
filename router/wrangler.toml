@@ -10,7 +10,7 @@ crons = ["*/15 * * * *"]
 
 [env.qr]
 name = "dw-router-qr"
-vars = { SPECIES = "qr", EVOLVE_EVERY_H = "2", FALLBACK_ORIGIN = "https://sp-qr-g0-ctrl.moha-98-1900.workers.dev" }
+vars = { SPECIES = "qr", EVOLVE_EVERY_H = "12", SIMS_EVERY_H = "2", FALLBACK_ORIGIN = "https://sp-qr-g0-ctrl.moha-98-1900.workers.dev" }
 routes = [{ pattern = "qrsthatlast.com", custom_domain = true }]
 d1_databases = [{ binding = "DB", database_name = "darwinian", database_id = "7af0faf8-b931-4de5-8d33-0dd72170b28e" }]
 

@@ -18,6 +18,7 @@ export interface Env extends PayEnv {
   GH_DISPATCH_TOKEN?: string; // set on one router only: it is the experiment's clock
   DISPATCH_REPO?: string;
   EVOLVE_EVERY_H?: string;
+  SIMS_EVERY_H?: string;
   FALLBACK_ORIGIN?: string; // the frozen control, served when the database is unreachable and nothing is cached
 }
 
@@ -359,9 +360,10 @@ export default {
     // Recount arm stats every 15 minutes (cheap now: it reads the small incremental tables).
     ctx.waitUntil(aggregate(env));
     // The heartbeat of evolution (only the router with GH_DISPATCH_TOKEN, i.e. qr, keeps the clock):
-    // a breeding cycle every EVOLVE_EVERY_H hours, simulated users every hour, the growth loop once a day, the ideation loop every 8 hours.
+    // a breeding cycle every EVOLVE_EVERY_H hours, simulated users every SIMS_EVERY_H hours (odd hours, so they never start with a breeding cycle), the growth loop once a day, the ideation loop every 8 hours.
     const t = new Date(ev.scheduledTime);
     const every = Number(env.EVOLVE_EVERY_H ?? 6) || 6;
+    const simsEvery = Number(env.SIMS_EVERY_H ?? 1) || 1;
     const h = t.getUTCHours(), m = t.getUTCMinutes();
     const dispatch = (workflow: string) =>
       fetch(`https://api.github.com/repos/${env.DISPATCH_REPO ?? "darwinian-lab/engine"}/actions/workflows/${workflow}/dispatches`, {
@@ -373,7 +375,7 @@ export default {
       });
     if (env.GH_DISPATCH_TOKEN) {
       if (h % every === 0 && m < 15) ctx.waitUntil(dispatch("evolve.yml"));
-      if (m >= 15 && m < 30) ctx.waitUntil(dispatch("sims.yml"));
+      if ((simsEvery === 1 || h % simsEvery === 1) && m >= 15 && m < 30) ctx.waitUntil(dispatch("sims.yml"));
       if (h === 7 && m >= 30 && m < 45) ctx.waitUntil(dispatch("growth.yml"));
       if (h % 8 === 3 && m >= 45) ctx.waitUntil(dispatch("ideas.yml"));
     }
